@@ -1,17 +1,13 @@
 #!/bin/bash
 
-# Update system
+# Update and install
 yum update -y
-
-# Install Node.js and git
-curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
 yum install -y nodejs git
 
-# Create app directory
+# Setup app
 mkdir -p /var/www/myapp
 cd /var/www/myapp
 
-# Clone or pull code
 if [ -d ".git" ]; then
   git pull origin main
 else
@@ -20,27 +16,24 @@ fi
 
 cd app
 
-# Install dependencies
 npm ci --production
 
-# Create .env file
+# Create .env with your real credentials
 cat > .env << EOL
-DB_HOST=${DB_HOST}
-DB_USER=${DB_USER}
-DB_NAME=${DB_NAME}
-DB_PASSWORD=${DB_PASSWORD}
+DB_HOST=myapp-rds.cefo7yhuwfxg.us-east-1.rds.amazonaws.com
+DB_USER=admin
+DB_NAME=myappdb
+DB_PASSWORD=Kd929986RDS!
 PORT=3000
 EOL
 
-# Kill any existing server (including Apache)
+# Kill any old processes
 pkill -f node || true
 pkill httpd || true
 systemctl stop httpd || true
 
-# Start the Node.js app with PM2
+# Start Node.js app
 npm install -g pm2
 pm2 start app.js --name "3tier-app"
-pm2 save
-pm2 startup
 
-echo "✅ 3-Tier Node.js App started successfully on $(hostname) - $(date)"
+echo "✅ App started successfully - $(date)" > /var/log/app.log
