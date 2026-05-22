@@ -3,19 +3,20 @@ set -e
 
 echo "🚀 Deploying to Staging..."
 
-# Copy user-data script
-cp scripts/user-data.sh scripts/user-data-temp.sh 2>/dev/null || cp user-data.sh scripts/user-data-temp.sh 2>/dev/null || true
+# Use correct launch template name
+LT_NAME="ha-project-lt"
 
-# Create new Launch Template version
+cp scripts/user-data.sh scripts/user-data-temp.sh 2>/dev/null || true
+
 aws ec2 create-launch-template-version \
-  --launch-template-name "ha-project-lt" \
+  --launch-template-name "$LT_NAME" \
   --version-description "Deploy $(date +%Y%m%d-%H%M%S)" \
   --source-version 1 \
   --launch-template-data file://<(echo '{
-    "UserData": "'"$(base64 -w 0 scripts/user-data-temp.sh 2>/dev/null || cat scripts/user-data.sh 2>/dev/null || cat user-data.sh)"'"
+    "UserData": "'"$(base64 -w 0 scripts/user-data-temp.sh)"'"
   }') || true
 
-echo "✅ New Launch Template version created. Starting rolling update..."
+echo "✅ Launch Template updated. Starting rolling update..."
 
 aws autoscaling start-instance-refresh \
   --auto-scaling-group-name "ha-project-asg" \
