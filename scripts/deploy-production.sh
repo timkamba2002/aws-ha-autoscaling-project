@@ -3,7 +3,7 @@ set -e
 
 echo "🌍 Deploying to Production..."
 
-LT_NAME="ha-project-lt"
+LT_NAME="ha-project-lt20260521185755080700000002"
 
 cp scripts/user-data.sh scripts/user-data-temp.sh 2>/dev/null || true
 
@@ -17,6 +17,6 @@ aws ec2 create-launch-template-version \
 
 aws autoscaling start-instance-refresh \
   --auto-scaling-group-name "ha-project-asg" \
-  --preferences "MinHealthyPercentage=50,InstanceWarmup=90"
+  --preferences "MinHealthyPercentage=50,InstanceWarmup=90" || true
 
 echo "🎉 Production deployment triggered!"
