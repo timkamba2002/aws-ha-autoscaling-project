@@ -27,6 +27,17 @@ jobs:
         working-directory: ./app
         run: npm ci
 
+      - name: Archive application
+        run: |
+          tar -czf app.tar.gz -C . app
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-bundle
+          path: app.tar.gz
+          retention-days: 1
+
   test:
     name: Test & Validate
     runs-on: ubuntu-latest
@@ -61,6 +72,9 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: app-bundle
+
+      - name: Extract artifact
+        run: tar -xzf app.tar.gz
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -101,6 +115,9 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: app-bundle
+
+      - name: Extract artifact
+        run: tar -xzf app.tar.gz
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
