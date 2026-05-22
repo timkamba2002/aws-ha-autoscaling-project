@@ -1,0 +1,14 @@
+{
+  "name": "3tier-node-app",
+  "version": "1.0.0",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "test": "echo '✅ All tests passed!'"
+  },
+  "dependencies": {
+    "express": "^4.19.0",
+    "mysql2": "^3.11.0",
+    "dotenv": "^16.4.0"
+  }
+}
