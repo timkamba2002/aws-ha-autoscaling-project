@@ -9,19 +9,77 @@ permissions:
   contents: read
 
 jobs:
-  deploy:
+
+  build:
+    name: Build Package
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        role-to-assume: arn:aws:iam::866934333672:role/GitHubActionsDeployRole-HAProjectV2
-        aws-region: us-east-1
+      - name: Build application
+        run: |
+          echo "Building application..."
+          # Add your build commands here (npm install, mvn package, etc.)
 
-    - name: Deploy
-      run: |
-        echo "Deployment successful"
+  test:
+    name: Test & Validate
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run tests
+        run: |
+          echo "Running tests..."
+          # Add your test commands here (npm test, pytest, etc.)
+
+  staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::866934333672:role/GitHubActionsDeployRole-HAProjectV2
+          aws-region: us-east-1
+
+      - name: Deploy to staging
+        run: |
+          echo "Deploying to staging..."
+          # terraform apply -auto-approve -var="environment=staging"
+
+  approval:
+    name: Manual Approval Gate
+    runs-on: ubuntu-latest
+    needs: staging
+    steps:
+      - name: Wait for approval
+        uses: trstringer/manual-approval@v1
+        with:
+          secret: ${{ github.token }}
+          approvers: timothy.kamba@techconsulting.tech
+
+  production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: approval
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::866934333672:role/GitHubActionsDeployRole-HAProjectV2
+          aws-region: us-east-1
+
+      - name: Deploy to production
+        run: |
+          echo "Deploying to production..."
+          # terraform apply -auto-approve -var="environment=prod"
