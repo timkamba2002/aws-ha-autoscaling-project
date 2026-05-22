@@ -102,7 +102,6 @@ jobs:
         with:
           secret: ${{ github.token }}
           approvers: timothy.kamba@techconsulting.tech
-          minimum-approvals: 1
 
   # 5. DEPLOY TO PRODUCTION
   production:
