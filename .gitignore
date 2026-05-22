@@ -1,6 +1,6 @@
 # Terraform
-.terraform/
 **/.terraform/
+.terraform/
 *.tfstate
 *.tfstate.backup
 .terraform.lock.hcl
@@ -16,5 +16,5 @@ yarn-error.log*
 .DS_Store
 Thumbs.db
 
-# Large binaries
+# Large files
 *.exe
