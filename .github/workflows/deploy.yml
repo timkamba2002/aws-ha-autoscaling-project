@@ -103,9 +103,6 @@ jobs:
           secret: ${{ github.token }}
           approvers: timothy.kamba@techconsulting.tech
           minimum-approvals: 1
-          issue-title: "Deploy to Production - Manual Approval Required"
-          issue-body: |
-            Please review the staging deployment before approving production.
 
   # 5. DEPLOY TO PRODUCTION
   production:
