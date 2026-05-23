@@ -2,7 +2,20 @@
 
 A complete **production-ready 3-tier architecture** built as a Cloud/DevOps learning project using Terraform and GitHub Actions.
 
-![Live Application](./screenshots/website.png)
+## 🌐 Live Application
+
+**Your application is live and running!**  
+👉 **[View Live Website](http://ha-project-alb-1568483483.us-east-1.elb.amazonaws.com/)**
+
+---
+
+## 📸 Project Screenshots
+
+![CI/CD Pipeline Success](./screenshots/pipeline.png)
+*GitHub Actions CI/CD pipeline with all stages passing*
+
+![Live Website](./screenshots/website.png)
+*3-Tier application running on AWS with auto-scaling*
 
 ---
 
@@ -83,6 +96,10 @@ aws-ha-autoscaling-project/
 │   ├── deploy-staging.sh        ← Staging deployment
 │   └── deploy-production.sh     ← Production deployment
 │
+├── 📸 screenshots/              ← Project Screenshots
+│   ├── pipeline.png             ← CI/CD pipeline screenshot
+│   └── website.png              ← Live application screenshot
+│
 └── 🤖 .github/workflows/        ← CI/CD Pipeline
     └── deploy.yml               ← GitHub Actions workflow
 ```
@@ -97,6 +114,9 @@ Single-page application deployed to EC2 instances. Contains HTML, environment co
 
 **`scripts/`** - Automation and deployment  
 Bash scripts for EC2 bootstrap, environment setup, and deployment orchestration across staging/production.
+
+**`screenshots/`** - Project documentation images  
+Visual screenshots of the CI/CD pipeline and live website for README documentation.
 
 **`.github/workflows/`** - CI/CD automation  
 GitHub Actions pipeline that builds, tests, and deploys application with manual approval gates.
