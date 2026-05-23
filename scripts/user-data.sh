@@ -6,10 +6,26 @@ yum install -y httpd
 systemctl start httpd
 systemctl enable httpd
 
-echo "<h1>✅ 3-Tier Infrastructure Working!</h1>
-<p>ALB + ASG + RDS is deployed successfully.</p>
-<p><a href='/db-test'>Check Database Later</a></p>" > /var/www/html/index.html
+cat > /var/www/html/index.html << 'HTML'
+<!DOCTYPE html>
+<html>
+<head>
+    <title>3-Tier Web Application</title>
+    <style>
+        body { font-family: Arial; text-align: center; margin-top: 50px; }
+        .success { color: green; }
+    </style>
+</head>
+<body>
+    <h1 class="success">✅ 3-Tier Architecture Deployed Successfully!</h1>
+    <p><strong>Auto Scaling Group + ALB + RDS</strong></p>
+    <p>This project was built using Terraform + GitHub Actions CI/CD</p>
+    <hr>
+    <p><em>Timothy Kamba - Cloud/DevOps Learning Project</em></p>
+</body>
+</html>
+HTML
 
 echo "OK" > /var/www/html/health
 
-echo "Static page deployed at $(date)"
+echo "Static production page deployed - $(date)"
