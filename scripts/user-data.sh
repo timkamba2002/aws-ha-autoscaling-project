@@ -1,5 +1,7 @@
 #!/bin/bash
 
+echo "Starting 3-Tier App Setup - $(date)"
+
 yum update -y
 yum install -y nodejs git
 
@@ -24,16 +26,16 @@ DB_PASSWORD=Kd929986RDS!
 PORT=3000
 EOL
 
-# Kill old processes
+# Kill any old processes
 pkill -f node || true
 pkill httpd || true
-systemctl stop httpd || true
 
-# Start app
-npm install -g pm2
-pm2 start app.js --name "3tier-app"
+# Start the app using nohup (simple and reliable)
+nohup node app.js > /var/log/app.log 2>&1 &
 
-# Create a simple health check file for ALB
+echo "✅ Node.js app started with nohup - $(date)" >> /var/log/app.log
+
+# Create health check file
 echo "OK" > /var/www/myapp/health
 
-echo "✅ App started - $(date)" > /var/log/app.log
+echo "App setup completed at $(date)"
