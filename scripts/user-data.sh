@@ -9,23 +9,15 @@ systemctl enable httpd
 cat > /var/www/html/index.html << 'HTML'
 <!DOCTYPE html>
 <html>
-<head>
-    <title>3-Tier Web Application</title>
-    <style>
-        body { font-family: Arial; text-align: center; margin-top: 50px; }
-        .success { color: green; }
-    </style>
-</head>
+<head><title>3-Tier App</title></head>
 <body>
-    <h1 class="success">✅ 3-Tier Architecture Deployed Successfully!</h1>
-    <p><strong>Auto Scaling Group + ALB + RDS</strong></p>
-    <p>This project was built using Terraform + GitHub Actions CI/CD</p>
-    <hr>
-    <p><em>Timothy Kamba - Cloud/DevOps Learning Project</em></p>
+    <h1>✅ 3-Tier Architecture is Working!</h1>
+    <p>ALB + Auto Scaling Group + RDS</p>
+    <p>CI/CD Pipeline is active</p>
+    <p><strong>Timothy Kamba - Cloud/DevOps Project</strong></p>
 </body>
 </html>
 HTML
 
 echo "OK" > /var/www/html/health
-
-echo "Static production page deployed - $(date)"
+echo "Static page deployed - $(date)"
