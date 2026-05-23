@@ -1,13 +1,18 @@
 #!/bin/bash
 
-echo "Starting 3-Tier App Setup - $(date)"
+echo "=== Starting setup at $(date) ==="
 
+# Update and install Node.js properly for Amazon Linux 2023
 yum update -y
 yum install -y nodejs git
+
+# Verify Node.js
+node --version || echo "Node.js installation failed"
 
 mkdir -p /var/www/myapp
 cd /var/www/myapp
 
+# Clone or pull code
 if [ -d ".git" ]; then
   git pull origin main
 else
@@ -26,16 +31,13 @@ DB_PASSWORD=Kd929986RDS!
 PORT=3000
 EOL
 
-# Kill any old processes
+# Kill old processes
 pkill -f node || true
 pkill httpd || true
 
-# Start the app using nohup (simple and reliable)
+# Start the app
 nohup node app.js > /var/log/app.log 2>&1 &
 
-echo "✅ Node.js app started with nohup - $(date)" >> /var/log/app.log
-
-# Create health check file
 echo "OK" > /var/www/myapp/health
 
-echo "App setup completed at $(date)"
+echo "=== Setup completed at $(date) ===" >> /var/log/app.log
