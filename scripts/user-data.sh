@@ -1,67 +1,40 @@
 #!/bin/bash
 
+echo "=== Starting Setup - $(date) ==="
+
 yum update -y
 yum install -y httpd
 
 systemctl start httpd
 systemctl enable httpd
 
+# Fetch secrets from AWS SSM Parameter Store
+DB_HOST=$(aws ssm get-parameter --name "/myapp/db/host" --with-decryption --query "Parameter.Value" --output text)
+DB_USER=$(aws ssm get-parameter --name "/myapp/db/user" --with-decryption --query "Parameter.Value" --output text)
+DB_NAME=$(aws ssm get-parameter --name "/myapp/db/name" --with-decryption --query "Parameter.Value" --output text)
+DB_PASSWORD=$(aws ssm get-parameter --name "/myapp/db/password" --with-decryption --query "Parameter.Value" --output text)
+
 cat > /var/www/html/index.html << 'HTML'
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>3-Tier AWS Architecture - Timothy Kamba</title>
+    <title>3-Tier AWS Project - Timothy Kamba</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; }
-        .header { text-align: center; color: #28a745; }
-        .section { margin: 30px 0; padding: 20px; border: 1px solid #ddd; border-radius: 8px; }
+        body { font-family: Arial, sans-serif; text-align: center; padding: 40px; }
+        .success { color: #28a745; }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>✅ 3-Tier Web Application</h1>
-        <h2>Auto-Scaling, Load-Balanced Architecture</h2>
-        <p><strong>Timothy Kamba - Cloud/DevOps Learning Project</strong></p>
-    </div>
-
-    <div class="section">
-        <h3>Technologies Used</h3>
-        <ul>
-            <li><strong>Infrastructure:</strong> Terraform</li>
-            <li><strong>Networking:</strong> VPC, Public/Private Subnets, NAT Gateway, Internet Gateway</li>
-            <li><strong>Load Balancing:</strong> Application Load Balancer (ALB)</li>
-            <li><strong>Compute:</strong> EC2 Auto Scaling Group + Launch Template</li>
-            <li><strong>Database:</strong> RDS MySQL (Private Subnets)</li>
-            <li><strong>CI/CD:</strong> GitHub Actions (Build → Test → Staging → Manual Approval → Production)</li>
-            <li><strong>Security:</strong> Security Groups, IAM Roles, SSM Parameter Store</li>
-        </ul>
-    </div>
-
-    <div class="section">
-        <h3>Challenges Faced & Lessons Learned</h3>
-        <ul>
-            <li>Git large file issues with Terraform providers</li>
-            <li>Health check configuration between ALB and EC2</li>
-            <li>IAM Role + OIDC trust policy for GitHub Actions</li>
-            <li>Debugging user-data.sh script execution on EC2</li>
-            <li>Understanding rolling updates and instance refresh</li>
-        </ul>
-    </div>
-
-    <div class="section">
-        <h3>Status</h3>
-        <p>✅ Infrastructure is live and auto-scaling</p>
-        <p>✅ CI/CD pipeline is fully functional</p>
-        <p>✅ Secrets managed via AWS SSM Parameter Store</p>
-    </div>
-
-    <p style="text-align:center; margin-top:50px;">
-        <em>Built as a hands-on learning project to gain real Cloud/DevOps experience</em>
-    </p>
+    <h1 class="success">✅ 3-Tier Architecture Deployed Successfully!</h1>
+    <p><strong>Auto Scaling + ALB + RDS</strong></p>
+    <p>CI/CD Pipeline with GitHub Actions</p>
+    <p>Secrets managed securely with <strong>AWS SSM Parameter Store</strong></p>
+    <hr>
+    <p><em>Timothy Kamba - Cloud/DevOps Learning Project</em></p>
 </body>
 </html>
 HTML
 
 echo "OK" > /var/www/html/health
-echo "Portfolio page deployed - $(date)"
+echo "Deployment completed using SSM - $(date)"
