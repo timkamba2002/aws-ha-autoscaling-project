@@ -1,32 +1,15 @@
 #!/bin/bash
 
-echo "=== Simple Setup - $(date) ==="
-
 yum update -y
-yum install -y nodejs git
+yum install -y httpd
 
-mkdir -p /var/www/myapp
-cd /var/www/myapp
+systemctl start httpd
+systemctl enable httpd
 
-git clone https://github.com/timkamba2002/aws-ha-autoscaling-project.git . --depth 1 || git pull origin main
+echo "<h1>✅ 3-Tier Infrastructure Working!</h1>
+<p>ALB + ASG + RDS is deployed successfully.</p>
+<p><a href='/db-test'>Check Database Later</a></p>" > /var/www/html/index.html
 
-cd app
+echo "OK" > /var/www/html/health
 
-npm ci --production
-
-cat > .env << EOL
-DB_HOST=myapp-rds.cefo7yhuwfxg.us-east-1.rds.amazonaws.com
-DB_USER=admin
-DB_NAME=myappdb
-DB_PASSWORD=Kd929986RDS!
-PORT=3000
-EOL
-
-pkill -f node || true
-pkill httpd || true
-
-nohup node app.js > /var/log/app.log 2>&1 &
-
-echo "OK" > /var/www/myapp/health
-
-echo "Setup done at $(date)" >> /var/log/app.log
+echo "Static page deployed at $(date)"
