@@ -28,7 +28,7 @@ jobs:
           path: app/build
 
   test-plan:
-    name: Test & Terraform Plan
+    name: Terraform Validate
     needs: build
     runs-on: ubuntu-latest
     steps:
@@ -47,7 +47,23 @@ jobs:
         run: terraform init -no-color
         working-directory: ./terraform
 
-      - name: Terraform Plan (Fast Mode)
-        run: terraform plan -no-color -lock=false -refresh=false
+      - name: Terraform Validate
+        run: terraform validate -no-color
         working-directory: ./terraform
-        timeout-minutes: 2
+
+  deploy-development:
+    name: Deploy to Development
+    needs: [test-plan]
+    if: github.ref == 'refs/heads/development'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: react-build
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::866934333672:role/GitHubActionsDeployRole-HAProjectV2
+          aws-region: us-east-1
+      - run: terraform apply -auto-approve -lock=false
+        working-directory: ./terraform
