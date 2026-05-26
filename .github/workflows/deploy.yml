@@ -41,15 +41,28 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-      - run: terraform init
-        working-directory: ./terraform
-      - run: terraform validate
-        working-directory: ./terraform
-      - run: terraform plan -out=tfplan
+
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::866934333672:role/GitHubActionsDeployRole-HAProjectV2
+          aws-region: us-east-1
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        run: terraform init
         working-directory: ./terraform
 
-  # 1. Deploy to Development (Automatic)
+      - name: Terraform Validate
+        run: terraform validate
+        working-directory: ./terraform
+
+      - name: Terraform Plan
+        run: terraform plan -out=tfplan
+        working-directory: ./terraform
+
   deploy-development:
     name: Deploy to Development
     needs: [test-plan]
@@ -58,43 +71,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
-        with: { name: react-build }
-      - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::866934333672:role/GitHubActionsDeployRole-HAProjectV2
-          aws-region: us-east-1
-      - run: terraform apply -auto-approve tfplan
-        working-directory: ./terraform
-
-  # 2. Deploy to Staging (Automatic - after Development succeeds)
-  deploy-staging:
-    name: Deploy to Staging
-    needs: [deploy-development]
-    if: github.ref == 'refs/heads/development'
-    runs-on: ubuntu-latest
-    environment: staging
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with: { name: react-build }
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::866934333672:role/GitHubActionsDeployRole-HAProjectV2
-          aws-region: us-east-1
-      - run: terraform apply -auto-approve tfplan
-        working-directory: ./terraform
-
-  # 3. Deploy to Production (Manual Approval)
-  deploy-production:
-    name: Deploy to Production
-    needs: [deploy-staging]
-    if: github.ref == 'refs/heads/production'
-    runs-on: ubuntu-latest
-    environment: production
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with: { name: react-build }
+          name: react-build
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::866934333672:role/GitHubActionsDeployRole-HAProjectV2
