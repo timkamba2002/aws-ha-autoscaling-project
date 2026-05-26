@@ -1,9 +1,9 @@
 terraform {
   backend "s3" {
-    bucket         = "aws-ha-terraform-state-bucket"   # Create this bucket first
-    key            = "aws-ha-autoscaling/terraform.tfstate"
+    bucket         = "aws-ha-terraform-state-bucket"   # ← Change this to your actual bucket
+    key            = "ha-3tier/terraform.tfstate"
     region         = "us-east-1"
-    dynamodb_table = "terraform-state-lock"         # Create this DynamoDB table
     encrypt        = true
+    dynamodb_table = "terraform-state-lock"
   }
 }
