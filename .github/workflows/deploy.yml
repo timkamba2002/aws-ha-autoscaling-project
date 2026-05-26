@@ -71,12 +71,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Download React Build
+      - name: Download Build
         uses: actions/download-artifact@v4
         with:
           name: react-build
 
-      - name: Configure AWS Credentials (OIDC)
+      - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::866934333672:role/GitHubActionsDeployRole-HAProjectV2
@@ -86,10 +86,36 @@ jobs:
         run: terraform apply -auto-approve tfplan
         working-directory: ./terraform
 
-  # 4. DEPLOY TO PRODUCTION (Manual Approval)
+  # 4. DEPLOY TO STAGING (Automatic)
+  deploy-staging:
+    name: Deploy to Staging
+    needs: [test-plan]
+    if: github.ref == 'refs/heads/development'   # Change to staging branch later
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download Build
+        uses: actions/download-artifact@v4
+        with:
+          name: react-build
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::866934333672:role/GitHubActionsDeployRole-HAProjectV2
+          aws-region: us-east-1
+
+      - name: Terraform Apply - Staging
+        run: terraform apply -auto-approve tfplan
+        working-directory: ./terraform
+
+  # 5. DEPLOY TO PRODUCTION (Manual Approval Gate)
   deploy-production:
     name: Deploy to Production
-    needs: [test-plan]
+    needs: [test-plan, deploy-staging]
     if: github.ref == 'refs/heads/production'
     runs-on: ubuntu-latest
     environment: production
@@ -97,12 +123,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Download React Build
+      - name: Download Build
         uses: actions/download-artifact@v4
         with:
           name: react-build
 
-      - name: Configure AWS Credentials (OIDC)
+      - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::866934333672:role/GitHubActionsDeployRole-HAProjectV2
