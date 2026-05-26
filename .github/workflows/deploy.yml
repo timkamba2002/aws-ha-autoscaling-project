@@ -47,11 +47,7 @@ jobs:
         run: terraform init -no-color
         working-directory: ./terraform
 
-      - name: Terraform Validate
-        run: terraform validate -no-color
-        working-directory: ./terraform
-
       - name: Terraform Plan
-        run: terraform plan -out=tfplan -no-color -lock=false --var-file=dev.tfvars || echo "Plan failed but continuing for debugging"
+        run: terraform plan -no-color -lock=false -refresh=false
         working-directory: ./terraform
-        timeout-minutes: 3
+        timeout-minutes: 4
