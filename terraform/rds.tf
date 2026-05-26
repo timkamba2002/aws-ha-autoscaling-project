@@ -1,7 +1,11 @@
-resource "aws_db_subnet_group" "main" {
-  name       = "main-db-subnet-group"
-  subnet_ids = module.vpc.private_subnet_ids
+# Data source to fetch password from AWS SSM Parameter Store
+data "aws_ssm_parameter" "db_password" {
+  name = "/ha3tier/db/password"
+}
 
+resource "aws_db_subnet_group" "main" {
+  name = "main-db-subnet-group"
+  subnet_ids = module.vpc.private_subnet_ids
   tags = {
     Name = "main-db-subnet-group"
   }
@@ -28,19 +32,19 @@ resource "aws_security_group" "rds_sg" {
 }
 
 resource "aws_db_instance" "main" {
-  identifier             = "myapp-rds"
-  engine                 = "mysql"
-  engine_version         = "8.0"
-  instance_class         = "db.t3.micro"
-  allocated_storage      = 20
+  identifier = "myapp-rds"
+  engine     = "mysql"
+  engine_version = "8.0"
+  instance_class = "db.t3.micro"
+  allocated_storage = 20
 
-  db_name                = "myappdb"
-  username               = "admin"
-  password               = var.db_password
+  db_name  = "myappdb"
+  username = "admin"
+  password = data.aws_ssm_parameter.db_password.value   # ← Updated
 
   vpc_security_group_ids = [aws_security_group.rds_sg.id]
   db_subnet_group_name   = aws_db_subnet_group.main.name
 
-  skip_final_snapshot    = true
-  publicly_accessible    = false
+  skip_final_snapshot = true
+  publicly_accessible = false
 }
