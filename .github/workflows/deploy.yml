@@ -52,16 +52,17 @@ jobs:
         uses: hashicorp/setup-terraform@v3
 
       - name: Terraform Init
-        run: terraform init
+        run: terraform init -no-color
         working-directory: ./terraform
 
       - name: Terraform Validate
-        run: terraform validate
+        run: terraform validate -no-color
         working-directory: ./terraform
 
       - name: Terraform Plan
-        run: terraform plan -out=tfplan
+        run: terraform plan -out=tfplan -no-color -lock=false
         working-directory: ./terraform
+        timeout-minutes: 5
 
   deploy-development:
     name: Deploy to Development
