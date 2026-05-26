@@ -27,7 +27,7 @@ jobs:
           name: react-build
           path: app/build
 
-  test-plan:
+  validate:
     name: Terraform Validate
     needs: build
     runs-on: ubuntu-latest
@@ -44,16 +44,16 @@ jobs:
         uses: hashicorp/setup-terraform@v3
 
       - name: Terraform Init
-        run: terraform init -no-color
+        run: terraform init
         working-directory: ./terraform
 
       - name: Terraform Validate
-        run: terraform validate -no-color
+        run: terraform validate
         working-directory: ./terraform
 
   deploy-development:
     name: Deploy to Development
-    needs: [test-plan]
+    needs: [validate]
     if: github.ref == 'refs/heads/development'
     runs-on: ubuntu-latest
     steps:
