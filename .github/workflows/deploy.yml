@@ -47,7 +47,7 @@ jobs:
         run: terraform init -no-color
         working-directory: ./terraform
 
-      - name: Terraform Plan
+      - name: Terraform Plan (Fast Mode)
         run: terraform plan -no-color -lock=false -refresh=false
         working-directory: ./terraform
-        timeout-minutes: 4
+        timeout-minutes: 2
