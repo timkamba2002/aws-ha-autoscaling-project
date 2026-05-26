@@ -2,15 +2,16 @@ name: CI/CD Pipeline - 3-Tier Web App
 
 on:
   push:
-    branches: [ "main" ]
+    branches: 
+      - development     # You will push your changes here
 
 permissions:
   id-token: write
   contents: read
 
 jobs:
-  build:
-    name: Build Package
+  build-test-plan:
+    name: Build, Test & Terraform Plan
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -20,118 +21,81 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
-          cache-dependency-path: app/package-lock.json
 
-      - name: Install dependencies
+      - name: Install Frontend Dependencies
         working-directory: ./app
         run: npm ci
 
-      - name: Archive application
-        run: |
-          tar -czf app.tar.gz -C . app
+      - name: Build React App
+        working-directory: ./app
+        run: npm run build
 
-      - name: Upload artifact
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        run: terraform init
+        working-directory: ./terraform
+
+      - name: Terraform Validate
+        run: terraform validate
+        working-directory: ./terraform
+
+      - name: Terraform Plan
+        run: terraform plan -out=tfplan
+        working-directory: ./terraform
+
+      - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-bundle
-          path: app.tar.gz
-          retention-days: 1
+          name: app-build
+          path: app/build
 
-  test:
-    name: Test & Validate
+  # Auto Deploy to Development
+  deploy-development:
+    needs: build-test-plan
+    if: github.ref == 'refs/heads/development'
     runs-on: ubuntu-latest
-    needs: build
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Install dependencies
-        working-directory: ./app
-        run: npm ci
-
-      - name: Run tests
-        working-directory: ./app
-        run: npm test
-
-  staging:
-    name: Deploy to Staging
-    runs-on: ubuntu-latest
-    needs: test
-    environment: staging
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Download artifact
+      - name: Download Artifact
         uses: actions/download-artifact@v4
         with:
-          name: app-bundle
+          name: app-build
 
-      - name: Extract artifact
-        run: tar -xzf app.tar.gz
-
-      - name: Configure AWS credentials
+      - name: Configure AWS Credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::866934333672:role/GitHubActionsDeployRole-HAProjectV2
           aws-region: us-east-1
 
-      - name: Make scripts executable
-        run: chmod +x scripts/*.sh
+      - name: Terraform Apply - Development
+        run: terraform apply -auto-approve tfplan
+        working-directory: ./terraform
 
-      - name: Deploy to Staging
-        run: ./scripts/deploy-staging.sh
-        env:
-          DB_HOST: ${{ secrets.DB_HOST }}
-          DB_USER: ${{ secrets.DB_USER }}
-          DB_NAME: ${{ secrets.DB_NAME }}
-          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-
-  approval:
-    name: Manual Approval Gate
+  # Deploy to Production (with Manual Approval)
+  deploy-production:
+    needs: build-test-plan
+    if: github.ref == 'refs/heads/production'
     runs-on: ubuntu-latest
-    needs: staging
-    environment: production
-    steps:
-      - name: Manual Approval
-        run: echo "✅ Manual approval completed - Proceeding to Production"
-
-  production:
-    name: Deploy to Production
-    runs-on: ubuntu-latest
-    needs: approval
     environment: production
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Download artifact
+      - name: Download Artifact
         uses: actions/download-artifact@v4
         with:
-          name: app-bundle
+          name: app-build
 
-      - name: Extract artifact
-        run: tar -xzf app.tar.gz
-
-      - name: Configure AWS credentials
+      - name: Configure AWS Credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::866934333672:role/GitHubActionsDeployRole-HAProjectV2
           aws-region: us-east-1
 
-      - name: Make scripts executable
-        run: chmod +x scripts/*.sh
-
-      - name: Deploy to Production
-        run: ./scripts/deploy-production.sh
-        env:
-          DB_HOST: ${{ secrets.DB_HOST }}
-          DB_USER: ${{ secrets.DB_USER }}
-          DB_NAME: ${{ secrets.DB_NAME }}
-          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+      - name: Terraform Apply - Production
+        run: terraform apply -auto-approve tfplan
+        working-directory: ./terraform
