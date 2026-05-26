@@ -3,15 +3,16 @@ name: CI/CD Pipeline - 3-Tier Web App
 on:
   push:
     branches: 
-      - development     # You will push your changes here
+      - development
 
 permissions:
   id-token: write
   contents: read
 
 jobs:
-  build-test-plan:
-    name: Build, Test & Terraform Plan
+  # 1. BUILD
+  build:
+    name: Build React App
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -22,13 +23,28 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install Frontend Dependencies
+      - name: Install Dependencies
         working-directory: ./app
         run: npm ci
 
       - name: Build React App
         working-directory: ./app
         run: npm run build
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: react-build
+          path: app/build
+
+  # 2. TEST & TERRAFORM PLAN
+  test-plan:
+    name: Test & Terraform Plan
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
@@ -45,25 +61,20 @@ jobs:
         run: terraform plan -out=tfplan
         working-directory: ./terraform
 
-      - name: Upload Build Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-build
-          path: app/build
-
-  # Auto Deploy to Development
+  # 3. DEPLOY TO DEVELOPMENT (Automatic)
   deploy-development:
-    needs: build-test-plan
+    name: Deploy to Development
+    needs: [test-plan]
     if: github.ref == 'refs/heads/development'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Download Artifact
+      - name: Download React Build
         uses: actions/download-artifact@v4
         with:
-          name: app-build
+          name: react-build
 
       - name: Configure AWS Credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
@@ -75,9 +86,10 @@ jobs:
         run: terraform apply -auto-approve tfplan
         working-directory: ./terraform
 
-  # Deploy to Production (with Manual Approval)
+  # 4. DEPLOY TO PRODUCTION (Manual Approval)
   deploy-production:
-    needs: build-test-plan
+    name: Deploy to Production
+    needs: [test-plan]
     if: github.ref == 'refs/heads/production'
     runs-on: ubuntu-latest
     environment: production
@@ -85,10 +97,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Download Artifact
+      - name: Download React Build
         uses: actions/download-artifact@v4
         with:
-          name: app-build
+          name: react-build
 
       - name: Configure AWS Credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
