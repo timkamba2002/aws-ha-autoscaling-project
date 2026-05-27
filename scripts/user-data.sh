@@ -1,40 +1,19 @@
 #!/bin/bash
+echo "=== Starting React To-Do App Deployment - $(date) ==="
 
-echo "=== Starting Setup - $(date) ==="
-
+# Update system and install Apache
 yum update -y
 yum install -y httpd
 
+# Copy the React build files from the artifact
+rm -rf /var/www/html/*
+cp -r /tmp/build/* /var/www/html/
+
+# Start Apache
 systemctl start httpd
 systemctl enable httpd
 
-# Fetch secrets from AWS SSM Parameter Store
-DB_HOST=$(aws ssm get-parameter --name "/myapp/db/host" --with-decryption --query "Parameter.Value" --output text)
-DB_USER=$(aws ssm get-parameter --name "/myapp/db/user" --with-decryption --query "Parameter.Value" --output text)
-DB_NAME=$(aws ssm get-parameter --name "/myapp/db/name" --with-decryption --query "Parameter.Value" --output text)
-DB_PASSWORD=$(aws ssm get-parameter --name "/myapp/db/password" --with-decryption --query "Parameter.Value" --output text)
+echo "✅ React To-Do List App Deployed Successfully" > /var/www/html/health.html
+echo "Deployment completed at $(date)" >> /var/www/html/health.html
 
-cat > /var/www/html/index.html << 'HTML'
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>3-Tier AWS Project - Timothy Kamba</title>
-    <style>
-        body { font-family: Arial, sans-serif; text-align: center; padding: 40px; }
-        .success { color: #28a745; }
-    </style>
-</head>
-<body>
-    <h1 class="success">✅ 3-Tier Architecture Deployed Successfully!</h1>
-    <p><strong>Auto Scaling + ALB + RDS</strong></p>
-    <p>CI/CD Pipeline with GitHub Actions</p>
-    <p>Secrets managed securely with <strong>AWS SSM Parameter Store</strong></p>
-    <hr>
-    <p><em>Timothy Kamba - Cloud/DevOps Learning Project</em></p>
-</body>
-</html>
-HTML
-
-echo "OK" > /var/www/html/health
-echo "Deployment completed using SSM - $(date)"
+echo "=== React App Deployment Complete ==="
