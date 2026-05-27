@@ -4,21 +4,23 @@ const TodoApp: React.FC = () => {
   const [user, setUser] = useState<any>(null);
   const [todos, setTodos] = useState<string[]>([]);
   const [newTodo, setNewTodo] = useState('');
+  const [email, setEmail] = useState('');
 
-  // Simple Google Login simulation
+  // Mock Google Sign In
   const handleGoogleLogin = () => {
     const mockUser = {
       uid: "user_" + Date.now(),
-      displayName: "Demo User",
-      email: "demo@example.com"
+      displayName: "Timothy Kamba",
+      email: "timothy.kamba@example.com"
     };
     setUser(mockUser);
+    setEmail(mockUser.email);
     localStorage.setItem('user', JSON.stringify(mockUser));
     alert("✅ Logged in with Google (Demo Mode)");
   };
 
   const addTodo = () => {
-    if (newTodo.trim()) {
+    if (newTodo.trim() && user) {
       setTodos([...todos, newTodo.trim()]);
       setNewTodo('');
     }
@@ -28,75 +30,63 @@ const TodoApp: React.FC = () => {
     setTodos(todos.filter((_, i) => i !== index));
   };
 
-  // Load saved user
+  const sendToEmail = async () => {
+    if (!user || todos.length === 0) return alert("No tasks to send!");
+
+    try {
+      const response = await fetch('http://YOUR_ALB_DNS/api/send-tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: user.email, tasks: todos })
+      });
+      if (response.ok) {
+        alert("✅ Tasks sent to your email via SNS!");
+      }
+    } catch (error) {
+      alert("Failed to send email");
+    }
+  };
+
   useEffect(() => {
     const savedUser = localStorage.getItem('user');
     if (savedUser) setUser(JSON.parse(savedUser));
   }, []);
 
   return (
-    <div style={{ maxWidth: '600px', margin: '40px auto', padding: '20px', fontFamily: 'Arial, sans-serif' }}>
-      <h1 style={{ textAlign: 'center' }}>My Todo List</h1>
+    <div style={{ padding: '20px', maxWidth: '600px', margin: '0 auto', fontFamily: 'Arial' }}>
+      <h1>✅ My To-Do List</h1>
 
       {!user ? (
-        <div style={{ textAlign: 'center', marginTop: '50px' }}>
-          <button 
-            onClick={handleGoogleLogin}
-            style={{
-              padding: '15px 30px',
-              fontSize: '18px',
-              backgroundColor: '#4285f4',
-              color: 'white',
-              border: 'none',
-              borderRadius: '5px',
-              cursor: 'pointer'
-            }}
-          >
-            Sign in with Google
-          </button>
-        </div>
+        <button onClick={handleGoogleLogin} style={{ padding: '10px 20px', fontSize: '16px' }}>
+          Sign in with Google
+        </button>
       ) : (
         <>
-          <p style={{ textAlign: 'center' }}>Welcome, {user.displayName}!</p>
-
-          <div style={{ display: 'flex', marginBottom: '20px' }}>
+          <p>Welcome, <strong>{user.displayName}</strong> ({user.email})</p>
+          
+          <div style={{ margin: '20px 0' }}>
             <input
-              type="text"
               value={newTodo}
               onChange={(e) => setNewTodo(e.target.value)}
+              placeholder="Add new task..."
+              style={{ padding: '8px', width: '70%' }}
               onKeyPress={(e) => e.key === 'Enter' && addTodo()}
-              placeholder="Enter a new task..."
-              style={{ flex: 1, padding: '10px', fontSize: '16px' }}
             />
-            <button 
-              onClick={addTodo}
-              style={{ padding: '10px 20px', marginLeft: '10px', backgroundColor: '#4CAF50', color: 'white', border: 'none', borderRadius: '5px' }}
-            >
-              Add
-            </button>
+            <button onClick={addTodo} style={{ padding: '8px 16px' }}>Add</button>
           </div>
 
-          <ul style={{ listStyle: 'none', padding: 0 }}>
+          <ul>
             {todos.map((todo, index) => (
-              <li key={index} style={{ 
-                padding: '12px', 
-                backgroundColor: '#f9f9f9', 
-                marginBottom: '8px',
-                borderRadius: '5px',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center'
-              }}>
+              <li key={index} style={{ margin: '8px 0' }}>
                 {todo}
-                <button 
-                  onClick={() => deleteTodo(index)}
-                  style={{ backgroundColor: '#f44336', color: 'white', border: 'none', padding: '5px 10px', borderRadius: '3px' }}
-                >
-                  Delete
-                </button>
+                <button onClick={() => deleteTodo(index)} style={{ marginLeft: '10px', color: 'red' }}>Delete</button>
               </li>
             ))}
           </ul>
+
+          <button onClick={sendToEmail} style={{ marginTop: '20px', padding: '10px 20px', background: '#28a745', color: 'white' }}>
+            📧 Send Tasks to Email (SNS)
+          </button>
         </>
       )}
     </div>
