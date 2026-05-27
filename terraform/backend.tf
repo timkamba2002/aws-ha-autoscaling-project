@@ -1,10 +1,9 @@
 terraform {
   backend "s3" {
-    bucket         = "aws-ha-terraform-state-bucket"   # ← CHANGE THIS to your actual bucket name
+    bucket         = "aws-ha-terraform-state-bucket"
     key            = "ha-3tier/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    # DynamoDB locking disabled temporarily due to permission issues
-    # dynamodb_table = "terraform-state-lock"
+    # DynamoDB locking disabled temporarily
   }
 }
