@@ -43,12 +43,12 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
-      - name: Terraform Init
-        run: terraform init
+      - name: Terraform Init (Force Migration)
+        run: terraform init -migrate-state -force-copy -no-color
         working-directory: ./terraform
 
       - name: Terraform Plan
-        run: terraform plan -out=tfplan -lock=false -refresh=false
+        run: terraform plan -out=tfplan -no-color -lock=false -refresh=false
         working-directory: ./terraform
 
   deploy-development:
