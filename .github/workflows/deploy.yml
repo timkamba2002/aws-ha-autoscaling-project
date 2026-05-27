@@ -27,40 +27,9 @@ jobs:
           name: react-build
           path: app/build
 
-  test-plan:
-    name: Test & Terraform Plan
+  deploy-frontend:
+    name: Upload React Build to S3
     needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::866934333672:role/GitHubActionsDeployRole-HAProjectV2
-          aws-region: us-east-1
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-
-      - name: Terraform Init
-        run: terraform init
-        working-directory: ./terraform
-
-      - name: Terraform Plan
-        run: terraform plan -out=tfplan -no-color -lock=false -refresh=false
-        working-directory: ./terraform
-
-      - name: Upload Plan
-        uses: actions/upload-artifact@v4
-        with:
-          name: tfplan
-          path: terraform/tfplan
-
-  deploy-development:
-    name: Deploy to Development
-    needs: [test-plan]
-    if: github.ref == 'refs/heads/development'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -69,13 +38,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: react-build
-          path: /tmp
-
-      - name: Download Plan
-        uses: actions/download-artifact@v4
-        with:
-          name: tfplan
-          path: terraform
+          path: build
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -83,13 +46,7 @@ jobs:
           role-to-assume: arn:aws:iam::866934333672:role/GitHubActionsDeployRole-HAProjectV2
           aws-region: us-east-1
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-
-      - name: Terraform Init
-        run: terraform init
-        working-directory: ./terraform
-
-      - name: Terraform Apply
-        run: terraform apply -auto-approve tfplan
-        working-directory: ./terraform
+      - name: Upload to S3
+        run: |
+          aws s3 sync build/ s3://ha-project-frontend-builds/frontend/current/ --delete
+          echo "✅ React build uploaded to S3 at $(date)"
