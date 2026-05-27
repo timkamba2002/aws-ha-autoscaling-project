@@ -27,8 +27,8 @@ jobs:
           name: react-build
           path: app/build
 
-  validate:
-    name: Terraform Validate
+  test-plan:
+    name: Test & Terraform Plan
     needs: build
     runs-on: ubuntu-latest
     steps:
@@ -44,16 +44,16 @@ jobs:
         uses: hashicorp/setup-terraform@v3
 
       - name: Terraform Init
-        run: terraform init -reconfigure -no-color
+        run: terraform init
         working-directory: ./terraform
 
-      - name: Terraform Validate
-        run: terraform validate
+      - name: Terraform Plan
+        run: terraform plan -out=tfplan -lock=false -refresh=false
         working-directory: ./terraform
 
   deploy-development:
     name: Deploy to Development
-    needs: [validate]
+    needs: [test-plan]
     if: github.ref == 'refs/heads/development'
     runs-on: ubuntu-latest
     steps:
@@ -65,5 +65,5 @@ jobs:
         with:
           role-to-assume: arn:aws:iam::866934333672:role/GitHubActionsDeployRole-HAProjectV2
           aws-region: us-east-1
-      - run: terraform apply -auto-approve -lock=false
+      - run: terraform apply -auto-approve tfplan
         working-directory: ./terraform
