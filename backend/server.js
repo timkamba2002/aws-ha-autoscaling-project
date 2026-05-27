@@ -1,5 +1,5 @@
 const express = require('express');
-const mysql = require('mysql2');
+const mysql = require('mysql2/promise');
 const cors = require('cors');
 require('dotenv').config();
 
@@ -9,59 +9,63 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 
-// MySQL Connection (using RDS)
-const db = mysql.createConnection({
+// RDS Connection Pool
+const pool = mysql.createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME
+  database: process.env.DB_NAME,
+  waitForConnections: true,
+  connectionLimit: 10
 });
 
-db.connect(err => {
-  if (err) {
-    console.error('Database connection failed:', err);
-  } else {
-    console.log('✅ Connected to RDS MySQL');
+// Create todos table
+async function initDB() {
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS todos (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id VARCHAR(255) NOT NULL,
+        task TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    console.log('✅ Todos table ready in RDS');
+  } catch (err) {
+    console.error('Database init error:', err);
+  }
+}
+initDB();
+
+// API Routes
+app.get('/api/todos', async (req, res) => {
+  try {
+    const [rows] = await pool.query('SELECT * FROM todos WHERE user_id = ? ORDER BY created_at DESC', [req.query.userId]);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
-// Create table if not exists
-db.query(`
-  CREATE TABLE IF NOT EXISTS todos (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id VARCHAR(255) NOT NULL,
-    task TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-  )
-`);
-
-// Get todos for user
-app.get('/api/todos', (req, res) => {
-  const userId = req.query.userId;
-  db.query('SELECT * FROM todos WHERE user_id = ? ORDER BY created_at DESC', [userId], (err, results) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json(results);
-  });
+app.post('/api/todos', async (req, res) => {
+  try {
+    const { userId, task } = req.body;
+    await pool.query('INSERT INTO todos (user_id, task) VALUES (?, ?)', [userId, task]);
+    res.json({ message: 'Task saved to RDS' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-// Add new todo
-app.post('/api/todos', (req, res) => {
-  const { userId, task } = req.body;
-  db.query('INSERT INTO todos (user_id, task) VALUES (?, ?)', [userId, task], (err) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json({ message: 'Task added' });
-  });
-});
-
-// Delete todo
-app.delete('/api/todos/:id', (req, res) => {
-  const { id } = req.params;
-  db.query('DELETE FROM todos WHERE id = ?', [id], (err) => {
-    if (err) return res.status(500).json({ error: err.message });
+app.delete('/api/todos/:id', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM todos WHERE id = ?', [req.params.id]);
     res.json({ message: 'Task deleted' });
-  });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.listen(PORT, () => {
-  console.log(`Backend running on port ${PORT}`);
+  console.log(`🚀 Backend API running on port ${PORT}`);
 });
