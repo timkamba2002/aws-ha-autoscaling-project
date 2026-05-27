@@ -1,42 +1,39 @@
 #!/bin/bash
-echo "=== React To-Do App Deployment - $(date) ==="
+echo "=== Full Stack Deployment - $(date) ==="
 
 yum update -y
-yum install -y httpd
+yum install -y httpd nodejs npm
 
-# Remove default Apache welcome page completely
+# Remove default welcome page
 rm -f /etc/httpd/conf.d/welcome.conf
 
-# Clean and set permissions
+# Start Apache for React frontend
 rm -rf /var/www/html/*
-chmod -R 755 /var/www/html
-
-# Create our React placeholder
 cat > /var/www/html/index.html << 'HTML'
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Timothy Kamba - React To-Do App</title>
-    <style>
-        body { font-family: Arial, sans-serif; text-align: center; padding: 60px; background: #f4f4f4; }
-        h1 { color: #28a745; }
-        p { font-size: 18px; }
-    </style>
+    <title>My To-Do List</title>
 </head>
 <body>
-    <h1>✅ React To-Do List App</h1>
-    <p><strong>Successfully Deployed via CI/CD Pipeline</strong></p>
-    <p>Timothy Kamba - Cloud/DevOps Project</p>
-    <hr>
-    <p>This is a test page. Real React app coming soon.</p>
+    <h1>React To-Do App Loading...</h1>
 </body>
 </html>
 HTML
 
-echo "OK - $(date)" > /var/www/html/health.html
-
 systemctl enable httpd
-systemctl restart httpd
+systemctl start httpd
 
-echo "Deployment finished - $(date)"
+# Start Backend API (Node.js)
+cd /home/ec2-user
+if [ ! -d "backend" ]; then
+  echo "Backend folder not found"
+else
+  cd backend
+  npm install
+  nohup node server.js > backend.log 2>&1 &
+  echo "Backend started on port 3000"
+fi
+
+echo "✅ Full Stack Deployed" > /var/www/html/health.html
