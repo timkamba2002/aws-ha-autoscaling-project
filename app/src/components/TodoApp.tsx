@@ -6,7 +6,6 @@ const TodoApp: React.FC = () => {
   const [user, setUser] = useState<any>(null);
   const [todos, setTodos] = useState<any[]>([]);
   const [newTodo, setNewTodo] = useState('');
-  const [loading, setLoading] = useState(false);
 
   const handleGoogleLogin = () => {
     const mockUser = {
@@ -80,7 +79,7 @@ const TodoApp: React.FC = () => {
   }, []);
 
   return (
-    <div style={{ padding: '30px', maxWidth: '700px', margin: '0 auto', fontFamily: 'Arial' }}>
+    <div style={{ padding: '30px', maxWidth: '700px', margin: '0 auto', fontFamily: 'Arial, sans-serif' }}>
       <h1>✅ My To-Do List</h1>
 
       {!user ? (
