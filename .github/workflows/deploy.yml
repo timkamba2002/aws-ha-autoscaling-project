@@ -1,5 +1,5 @@
 name: CI/CD Pipeline - 3-Tier Web App
-# Updated 2026-05-27 - Fixed deploy job
+
 on:
   push:
     branches: 
@@ -84,6 +84,10 @@ jobs:
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        run: terraform init
+        working-directory: ./terraform
 
       - name: Terraform Apply
         run: terraform apply -auto-approve tfplan
