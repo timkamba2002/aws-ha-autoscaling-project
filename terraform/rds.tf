@@ -3,7 +3,7 @@
 # Reason: Persistent creation order issues
 # =============================================
 
-/*
+
 data "aws_ssm_parameter" "db_password" {
   name = "/ha3tier/db/password"
 }
@@ -63,4 +63,3 @@ resource "aws_db_instance" "main" {
 
   depends_on = [aws_db_subnet_group.main]
 }
-*/
