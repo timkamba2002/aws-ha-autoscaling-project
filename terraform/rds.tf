@@ -3,6 +3,7 @@ data "aws_ssm_parameter" "db_password" {
   name = "/ha3tier/db/password"
 }
 
+# 1. Create Subnet Group First
 resource "aws_db_subnet_group" "main" {
   name       = "main-db-subnet-group"
   subnet_ids = module.vpc.private_subnet_ids
@@ -12,6 +13,7 @@ resource "aws_db_subnet_group" "main" {
   }
 }
 
+# 2. Create Security Group
 resource "aws_security_group" "rds_sg" {
   name        = "rds-security-group"
   description = "Allow MySQL from EC2 instances"
@@ -36,6 +38,7 @@ resource "aws_security_group" "rds_sg" {
   }
 }
 
+# 3. Create RDS Instance (with strong dependency)
 resource "aws_db_instance" "main" {
   identifier = "myapp-rds"
   engine     = "mysql"
@@ -57,9 +60,14 @@ resource "aws_db_instance" "main" {
     Name = "myapp-rds"
   }
 
-  # Strong dependency to ensure resources are created in correct order
+  # Strong dependency to force correct creation order
   depends_on = [
     aws_db_subnet_group.main,
     aws_security_group.rds_sg
   ]
+
+  # Give more time for subnet group to be ready
+  timeouts {
+    create = "20m"
+  }
 }
