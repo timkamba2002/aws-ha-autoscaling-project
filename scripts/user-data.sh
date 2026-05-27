@@ -4,36 +4,29 @@ echo "=== Full Stack Deployment - $(date) ==="
 yum update -y
 yum install -y httpd nodejs npm
 
-# Remove default welcome page
+# === Frontend (React) ===
 rm -f /etc/httpd/conf.d/welcome.conf
-
-# Start Apache for React frontend
 rm -rf /var/www/html/*
+
+# Simple loading page
 cat > /var/www/html/index.html << 'HTML'
 <!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>My To-Do List</title>
-</head>
-<body>
-    <h1>React To-Do App Loading...</h1>
-</body>
-</html>
+<html><head><title>Loading...</title></head><body><h1>React To-Do App Loading...</h1></body></html>
 HTML
 
 systemctl enable httpd
 systemctl start httpd
 
-# Start Backend API (Node.js)
+# === Backend (Node.js + RDS) ===
 cd /home/ec2-user
-if [ ! -d "backend" ]; then
-  echo "Backend folder not found"
-else
+if [ -d "backend" ]; then
   cd backend
-  npm install
+  npm install --silent
   nohup node server.js > backend.log 2>&1 &
-  echo "Backend started on port 3000"
+  echo "✅ Backend API started"
+else
+  echo "Backend folder not found" > /var/www/html/index.html
 fi
 
-echo "✅ Full Stack Deployed" > /var/www/html/health.html
+echo "✅ Full Stack Ready - $(date)" > /var/www/html/health.html
+echo "Deployment completed at $(date)"
