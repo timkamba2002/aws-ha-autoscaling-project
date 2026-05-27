@@ -1,19 +1,21 @@
-# Data source for DB password
+# =============================================
+# RDS Temporarily Disabled
+# Reason: Persistent creation order issues
+# =============================================
+
+/*
 data "aws_ssm_parameter" "db_password" {
   name = "/ha3tier/db/password"
 }
 
-# 1. Subnet Group (created first)
 resource "aws_db_subnet_group" "main" {
   name       = "main-db-subnet-group"
   subnet_ids = module.vpc.private_subnet_ids
-
   tags = {
     Name = "main-db-subnet-group"
   }
 }
 
-# 2. Security Group
 resource "aws_security_group" "rds_sg" {
   name        = "rds-security-group"
   description = "Allow MySQL from EC2 instances"
@@ -38,7 +40,6 @@ resource "aws_security_group" "rds_sg" {
   }
 }
 
-# 3. RDS Instance (depends on subnet group)
 resource "aws_db_instance" "main" {
   identifier = "myapp-rds"
   engine     = "mysql"
@@ -62,3 +63,4 @@ resource "aws_db_instance" "main" {
 
   depends_on = [aws_db_subnet_group.main]
 }
+*/
