@@ -1,8 +1,4 @@
-# =============================================
-# RDS Configuration
-# =============================================
-
-# Fetch DB password from SSM Parameter Store
+# Data source for DB password from SSM
 data "aws_ssm_parameter" "db_password" {
   name = "/ha3tier/db/password"
 }
@@ -61,8 +57,9 @@ resource "aws_db_instance" "main" {
     Name = "myapp-rds"
   }
 
+  # Strong dependency to ensure resources are created in correct order
   depends_on = [
-    aws_security_group.rds_sg,
-    aws_db_subnet_group.main
+    aws_db_subnet_group.main,
+    aws_security_group.rds_sg
   ]
 }
