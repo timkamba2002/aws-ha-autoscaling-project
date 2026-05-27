@@ -1,11 +1,12 @@
-# Data source to fetch password from AWS SSM Parameter Store
+# Data source for DB password from SSM
 data "aws_ssm_parameter" "db_password" {
   name = "/ha3tier/db/password"
 }
 
 resource "aws_db_subnet_group" "main" {
-  name = "main-db-subnet-group"
+  name       = "main-db-subnet-group"
   subnet_ids = module.vpc.private_subnet_ids
+
   tags = {
     Name = "main-db-subnet-group"
   }
@@ -29,6 +30,10 @@ resource "aws_security_group" "rds_sg" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
+  tags = {
+    Name = "rds-security-group"
+  }
 }
 
 resource "aws_db_instance" "main" {
@@ -42,7 +47,7 @@ resource "aws_db_instance" "main" {
   username = "admin"
   password = data.aws_ssm_parameter.db_password.value
 
-  # Fixed: Use the correct security group reference
+  # Explicit dependency to ensure security group is created first
   vpc_security_group_ids = [aws_security_group.rds_sg.id]
 
   db_subnet_group_name = aws_db_subnet_group.main.name
@@ -50,8 +55,13 @@ resource "aws_db_instance" "main" {
   skip_final_snapshot = true
   publicly_accessible = false
 
-  # Optional: Add tags for better management
   tags = {
     Name = "myapp-rds"
   }
+
+  # Ensure creation order
+  depends_on = [
+    aws_security_group.rds_sg,
+    aws_db_subnet_group.main
+  ]
 }
