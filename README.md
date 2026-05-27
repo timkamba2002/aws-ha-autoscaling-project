@@ -281,3 +281,4 @@ Made with ❤️ as a hands-on Cloud/DevOps learning project
 Updated React build - Tue May 26 14:04:05 EDT 2026
 Pipeline test after adding DynamoDB permissions - Tue May 26 15:14:14 EDT 2026
 Pipeline test after backend migration - Wed May 27 08:56:13 EDT 2026
+Test after adding SSM permission - Wed May 27 09:15:59 EDT 2026
