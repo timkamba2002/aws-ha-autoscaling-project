@@ -1,50 +1,27 @@
 #!/bin/bash
-set -euo pipefail
+echo "=== React Deployment Debug - $(date) ==="
 
-echo "=== React Frontend Deployment Started - $(date) ==="
-
-# Update and install Apache + AWS CLI (Amazon Linux 2)
 yum update -y
-yum install -y httpd awscli unzip
+yum install -y httpd
 
-# Clean web root
 rm -rf /var/www/html/*
-mkdir -p /var/www/html
 
-# === Download React build from S3 (populated by GitHub Actions) ===
-FRONTEND_BUCKET="${FRONTEND_BUCKET:-ha-project-frontend-builds}"
-echo "Fetching latest React build from s3://$FRONTEND_BUCKET/frontend/current/"
+# Simple test page
+cat > /var/www/html/index.html << 'HTML'
+<!DOCTYPE html>
+<html>
+<head><title>React To-Do App</title></head>
+<body style="font-family: Arial; text-align: center; padding: 50px;">
+  <h1>✅ React To-Do List App</h1>
+  <p>This is a test page from user-data.sh</p>
+  <p>If you see this, the deployment script is working.</p>
+</body>
+</html>
+HTML
 
-# Try sync (preferred - no zip needed)
-if aws s3 sync "s3://$FRONTEND_BUCKET/frontend/current/" /var/www/html/ --delete 2>/dev/null; then
-  echo "✅ Synced React build from S3 current/"
-else
-  echo "⚠️  Sync failed or bucket empty, trying latest.zip fallback..."
-  if aws s3 cp "s3://$FRONTEND_BUCKET/frontend/latest.zip" /tmp/react-build.zip 2>/dev/null; then
-    unzip -o /tmp/react-build.zip -d /var/www/html/
-    rm -f /tmp/react-build.zip
-    echo "✅ Extracted from latest.zip"
-  else
-    echo "❌ No build found in S3 - deploying placeholder"
-    cat > /var/www/html/index.html << 'EOF'
-<!doctype html>
-<html><head><title>Deploying...</title></head>
-<body><h1>React app is being deployed</h1><p>Check GitHub Actions logs and S3 bucket.</p></body></html>
-EOF
-  fi
-fi
+echo "Test page deployed" > /var/www/html/health.html
 
-# Set correct ownership and permissions (Amazon Linux 2 uses 'apache' user)
-chown -R apache:apache /var/www/html 2>/dev/null || chown -R ec2-user:ec2-user /var/www/html 2>/dev/null || true
-find /var/www/html -type d -exec chmod 755 {} + 2>/dev/null || true
-find /var/www/html -type f -exec chmod 644 {} + 2>/dev/null || true
-
-# ALB health check file (returns 200 OK)
-echo "OK $(date -Iseconds)" > /var/www/html/health
-
-# Enable + start Apache
 systemctl enable httpd
-systemctl start httpd || systemctl restart httpd
+systemctl restart httpd
 
-echo "🚀 React app successfully served on $(hostname) - $(date)"
-echo "=== Deployment Complete ==="
+echo "Deployment finished at $(date)"
