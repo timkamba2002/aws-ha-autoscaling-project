@@ -40,11 +40,18 @@ resource "aws_db_instance" "main" {
 
   db_name  = "myappdb"
   username = "admin"
-  password = data.aws_ssm_parameter.db_password.value   # ← Updated
+  password = data.aws_ssm_parameter.db_password.value
 
+  # Fixed: Use the correct security group reference
   vpc_security_group_ids = [aws_security_group.rds_sg.id]
-  db_subnet_group_name   = aws_db_subnet_group.main.name
+
+  db_subnet_group_name = aws_db_subnet_group.main.name
 
   skip_final_snapshot = true
   publicly_accessible = false
+
+  # Optional: Add tags for better management
+  tags = {
+    Name = "myapp-rds"
+  }
 }
