@@ -1,4 +1,8 @@
-# Data source for DB password from SSM
+# =============================================
+# RDS Configuration
+# =============================================
+
+# Fetch DB password from SSM Parameter Store
 data "aws_ssm_parameter" "db_password" {
   name = "/ha3tier/db/password"
 }
@@ -47,10 +51,8 @@ resource "aws_db_instance" "main" {
   username = "admin"
   password = data.aws_ssm_parameter.db_password.value
 
-  # Explicit dependency to ensure security group is created first
   vpc_security_group_ids = [aws_security_group.rds_sg.id]
-
-  db_subnet_group_name = aws_db_subnet_group.main.name
+  db_subnet_group_name   = aws_db_subnet_group.main.name
 
   skip_final_snapshot = true
   publicly_accessible = false
@@ -59,7 +61,6 @@ resource "aws_db_instance" "main" {
     Name = "myapp-rds"
   }
 
-  # Ensure creation order
   depends_on = [
     aws_security_group.rds_sg,
     aws_db_subnet_group.main
