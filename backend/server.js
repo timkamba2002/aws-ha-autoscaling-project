@@ -6,66 +6,24 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const PORT = 3000;
-
-// RDS Connection
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME || 'myappdb'
+  database: 'myappdb'
 });
 
-// Initialize table
-async function initDB() {
-  try {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS todos (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        user_id VARCHAR(255) NOT NULL,
-        task TEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-    console.log('✅ Todos table is ready in RDS');
-  } catch (err) {
-    console.error('Table init error:', err);
-  }
-}
-initDB();
+app.get('/health', (req, res) => res.send('OK'));
 
-// API Routes
 app.get('/api/todos', async (req, res) => {
-  try {
-    const [rows] = await pool.query(
-      'SELECT * FROM todos WHERE user_id = ? ORDER BY created_at DESC', 
-      [req.query.userId]
-    );
-    res.json(rows);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  const [rows] = await pool.query('SELECT * FROM todos WHERE user_id = ? ORDER BY created_at DESC', [req.query.userId]);
+  res.json(rows);
 });
 
 app.post('/api/todos', async (req, res) => {
-  try {
-    const { userId, task } = req.body;
-    await pool.query('INSERT INTO todos (user_id, task) VALUES (?, ?)', [userId, task]);
-    res.json({ success: true, message: 'Task saved to RDS' });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+  const { userId, task } = req.body;
+  await pool.query('INSERT INTO todos (user_id, task) VALUES (?, ?)', [userId, task]);
+  res.json({ success: true });
 });
 
-app.delete('/api/todos/:id', async (req, res) => {
-  try {
-    await pool.query('DELETE FROM todos WHERE id = ?', [req.params.id]);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.listen(PORT, () => {
-  console.log(`🚀 Backend API running on port ${PORT}`);
-});
+app.listen(3000, () => console.log('Backend API running on 3000'));

@@ -1,14 +1,12 @@
 #!/bin/bash
-echo "=== React To-Do App - $(date) ==="
-
 yum update -y
-yum install -y httpd
+yum install -y httpd nodejs npm
 
-rm -f /etc/httpd/conf.d/welcome.conf
 rm -rf /var/www/html/*
-cp -r /tmp/build/* /var/www/html/ 2>/dev/null || echo "<h1>React To-Do App Loading...</h1>" > /var/www/html/index.html
+cp -r /tmp/build/* /var/www/html/ 2>/dev/null || echo "<h1>App Loading...</h1>" > /var/www/html/index.html
 
-systemctl enable httpd
-systemctl restart httpd
+systemctl start httpd
 
-echo "✅ App is running - $(date)" > /var/www/html/health.html
+cd /home/ec2-user/backend
+npm install
+nohup node server.js > backend.log 2>&1 &
