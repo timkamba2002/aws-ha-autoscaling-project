@@ -27,16 +27,12 @@ jobs:
           name: react-build
           path: app/build
 
-  deploy-development:
-    name: Deploy to Development
+  test-plan:
+    name: Test & Terraform Plan
     needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: react-build
-          path: build
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -47,9 +43,42 @@ jobs:
       - name: Terraform Init
         run: terraform init
         working-directory: ./terraform
-      - name: Terraform Apply (Targeted)
-        run: |
-          terraform apply -target=module.ec2.aws_launch_template.lt -auto-approve
+      - name: Terraform Plan
+        run: terraform plan -out=tfplan -no-color -lock=false -refresh=false
         working-directory: ./terraform
-      - name: Refresh Instances
-        run: aws autoscaling start-instance-refresh --auto-scaling-group-name ha-project-asg --region us-east-1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tfplan
+          path: terraform/tfplan
+
+  deploy-development:
+    name: Deploy to Development
+    needs: [test-plan]
+    if: github.ref == 'refs/heads/development'
+    runs-on: ubuntu-latest
+    environment: development
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: react-build
+          path: build
+      - uses: actions/download-artifact@v4
+        with:
+          name: tfplan
+          path: terraform
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::866934333672:role/GitHubActionsDeployRole-HAProjectV2
+          aws-region: us-east-1
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+      - name: Terraform Init
+        run: terraform init
+        working-directory: ./terraform
+      - name: Terraform Apply
+        run: terraform apply -auto-approve tfplan
+        working-directory: ./terraform
+
+  # Add Staging and Production later after Development works
