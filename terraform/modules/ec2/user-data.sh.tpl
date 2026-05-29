@@ -25,14 +25,14 @@ else
     rm -f /tmp/react-build.zip
     echo "✅ Extracted latest.zip"
   else
-    echo "❌ No build artifact found in S3 yet"
+    echo "ℹ️ No build artifact found in S3 yet"
     cat > /var/www/html/index.html << 'HTMLEOF'
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Deploying React App</title></head>
 <body style="font-family: system-ui; padding: 2rem;">
   <h1>🚀 React app is deploying...</h1>
   <p>The frontend build has not been uploaded to S3 yet.</p>
-  <p>Check GitHub Actions "deploy-frontend" job and verify the S3 bucket contents.</p>
+  <p>Check GitHub Actions "Deploy to Development" job.</p>
 </body></html>
 HTMLEOF
   fi
@@ -50,5 +50,5 @@ echo "OK $(date -Iseconds)" > /var/www/html/health
 systemctl enable httpd
 systemctl start httpd || systemctl restart httpd
 
-echo "🚀 React frontend live at http://$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4 || hostname) - $(date)"
+echo "🚀 React frontend live on $(hostname) - $(date)"
 echo "=== Deployment Complete ==="

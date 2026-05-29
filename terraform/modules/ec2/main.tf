@@ -9,6 +9,12 @@ resource "aws_iam_role" "ec2_role" {
       Principal = { Service = "ec2.amazonaws.com" }
     }]
   })
+
+  tags = {
+    Name        = "ha-project-ec2-frontend-role"
+    Environment = "development"
+    ManagedBy   = "terraform"
+  }
 }
 
 resource "aws_iam_role_policy" "s3_frontend_read" {
@@ -55,5 +61,9 @@ resource "aws_launch_template" "lt" {
     tags = {
       Name = "ha-project-frontend"
     }
+  }
+
+  lifecycle {
+    ignore_changes = [user_data]
   }
 }

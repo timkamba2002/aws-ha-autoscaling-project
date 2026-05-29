@@ -17,14 +17,14 @@ resource "aws_lb_target_group" "tg" {
 
   health_check {
     enabled             = true
-    healthy_threshold   = 2
-    interval            = 30
-    matcher             = "200"
     path                = "/health"
     port                = "traffic-port"
     protocol            = "HTTP"
+    interval            = 30
     timeout             = 5
+    healthy_threshold   = 2
     unhealthy_threshold = 3
+    matcher             = "200"
   }
 }
 

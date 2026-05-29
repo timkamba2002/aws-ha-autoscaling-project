@@ -1,8 +1,22 @@
-output "frontend_builds_bucket" {
-  description = "S3 bucket for React frontend artifacts. GitHub Actions uploads here."
-  value       = aws_s3_bucket.frontend_builds.bucket
+output "alb_dns_name" {
+  description = "DNS name of the ALB - update React TodoApp.tsx API_BASE to http://<this-value>/api (run 'terraform output alb_dns_name' after apply)"
+  value       = module.alb.alb_dns_name
 }
 
-output "launch_template_id" {
-  value = module.ec2.launch_template_id
+output "rds_endpoint" {
+  description = "RDS endpoint (host:port) - use in backend EC2 user-data or SSM for DB_HOST"
+  value       = aws_db_instance.main.endpoint
+  sensitive   = true
+}
+
+output "frontend_s3_bucket" {
+  value = aws_s3_bucket.frontend_builds.id
+}
+
+output "backend_cloudwatch_log_group" {
+  value = module.monitoring.backend_log_group_name
+}
+
+output "rds_identifier" {
+  value = aws_db_instance.main.identifier
 }

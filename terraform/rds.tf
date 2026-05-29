@@ -1,21 +1,16 @@
-# =============================================
-# RDS Temporarily Disabled
-# Reason: Persistent creation order issues
-# =============================================
-
-
-data "aws_ssm_parameter" "db_password" {
-  name = "/ha3tier/db/password"
-}
-
+# DB Subnet Group (import if "main-db-subnet-group" already exists)
 resource "aws_db_subnet_group" "main" {
   name       = "main-db-subnet-group"
   subnet_ids = module.vpc.private_subnet_ids
+
   tags = {
-    Name = "main-db-subnet-group"
+    Name        = "main-db-subnet-group"
+    Environment = var.environment
+    ManagedBy   = "terraform"
   }
 }
 
+# Security Group for RDS (MySQL - matches existing myapp-rds)
 resource "aws_security_group" "rds_sg" {
   name        = "rds-security-group"
   description = "Allow MySQL from EC2 instances"
@@ -36,30 +31,40 @@ resource "aws_security_group" "rds_sg" {
   }
 
   tags = {
-    Name = "rds-security-group"
+    Name        = "rds-security-group"
+    Environment = var.environment
   }
 }
 
-resource "aws_db_instance" "main" {
-  identifier        = "myapp-rds"
-  engine            = "mysql"
-  engine_version    = "8.0"
-  instance_class    = "db.t3.micro"
-  allocated_storage = 20
+# PostgreSQL RDS Instance (import existing if identifier matches)
+# If you have an old MySQL instance, keep it and create this new one with a different identifier.
+# Read DB password from SSM Parameter Store (preferred method)
+data "aws_ssm_parameter" "db_password" {
+  name            = "/ha-project/development/db_password"
+  with_decryption = true
+}
 
-  db_name  = "myappdb"
-  username = "admin"
-  password = data.aws_ssm_parameter.db_password.value
+resource "aws_db_instance" "main" {
+  identifier             = "myapp-rds"
+  engine                 = "mysql"
+  engine_version         = "8.0.45"
+  instance_class         = "db.t3.micro"
+  allocated_storage      = 20
+
+  db_name                = "myappdb"
+  username               = "admin"
+  password               = coalesce(var.db_password, data.aws_ssm_parameter.db_password.value)
 
   vpc_security_group_ids = [aws_security_group.rds_sg.id]
   db_subnet_group_name   = aws_db_subnet_group.main.name
 
-  skip_final_snapshot = true
-  publicly_accessible = false
+  skip_final_snapshot    = true
+  publicly_accessible    = false
+  backup_retention_period = 7
 
   tags = {
-    Name = "myapp-rds"
+    Name        = "myapp-rds"
+    Environment = var.environment
+    ManagedBy   = "terraform"
   }
-
-  depends_on = [aws_db_subnet_group.main]
 }

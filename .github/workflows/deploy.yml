@@ -1,84 +1,288 @@
-name: CI/CD Pipeline - 3-Tier Web App
+name: CI/CD - HA 3-Tier To-Do App (React + Node + MySQL)
 
 on:
   push:
-    branches: 
-      - development
+    branches: [development, staging, main]
+  workflow_dispatch:
 
 permissions:
   id-token: write
   contents: read
 
+env:
+  AWS_REGION: us-east-1
+  TF_STATE_BUCKET: ha-project-terraform-state-866934333672
+  TF_LOCK_TABLE: ha-project-terraform-locks
+  FRONTEND_BUCKET: ha-project-frontend-builds
+  OIDC_ROLE: arn:aws:iam::866934333672:role/GitHubActionsDeployRole-HAProjectV2
+
 jobs:
+  # ===================== BUILD =====================
   build:
-    name: Build React App
+    name: Build React + Backend
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: npm ci
+          cache: 'npm'
+          cache-dependency-path: |
+            app/package-lock.json
+            backend/package-lock.json
+
+      - name: Build React Frontend
         working-directory: ./app
-      - run: npm run build
-        working-directory: ./app
-      - uses: actions/upload-artifact@v4
+        run: |
+          npm ci
+          npm run build
+
+      - name: Package Backend (self-contained with dependencies)
+        working-directory: ./backend
+        run: |
+          npm ci --production
+          zip -r ../backend.zip .
+
+      - name: Upload Frontend Artifact
+        uses: actions/upload-artifact@v4
         with:
           name: react-build
           path: app/build
 
+      - name: Upload Backend Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-zip
+          path: backend.zip
+
+  # ===================== TEST + TERRAFORM PLAN =====================
   test-plan:
     name: Test & Terraform Plan
     needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Configure AWS Credentials
+
+      - name: Configure AWS via OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::866934333672:role/GitHubActionsDeployRole-HAProjectV2
-          aws-region: us-east-1
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-      - name: Terraform Init
-        run: terraform init
+          role-to-assume: ${{ env.OIDC_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~> 1.7"
+
+      - name: Terraform Init (Remote Backend)
         working-directory: ./terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ env.TF_STATE_BUCKET }}" \
+            -backend-config="key=ha-project/${{ github.ref_name }}/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -backend-config="dynamodb_table=${{ env.TF_LOCK_TABLE }}" \
+            -backend-config="encrypt=true" \
+            -reconfigure
+
+      - name: Terraform Validate
+        working-directory: ./terraform
+        run: terraform validate
+
       - name: Terraform Plan
-        run: terraform plan -out=tfplan -no-color -lock=false -refresh=false
         working-directory: ./terraform
+        run: |
+          terraform plan \
+            -var="db_password=${{ secrets.DB_PASSWORD }}" \
+            -var="environment=${{ github.ref_name == 'main' && 'production' || github.ref_name == 'staging' && 'staging' || 'development' }}" \
+            -out=tfplan
+
       - uses: actions/upload-artifact@v4
         with:
-          name: tfplan
+          name: tfplan-${{ github.ref_name }}
           path: terraform/tfplan
 
-  deploy-development:
+  # ===================== DEPLOY TO DEVELOPMENT (AUTO) =====================
+  deploy-dev:
     name: Deploy to Development
-    needs: [test-plan]
+    needs: [build, test-plan]
     if: github.ref == 'refs/heads/development'
     runs-on: ubuntu-latest
-    environment: development
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: react-build
-          path: build
-      - uses: actions/download-artifact@v4
-        with:
-          name: tfplan
-          path: terraform
-      - name: Configure AWS Credentials
+
+      - name: Configure AWS via OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::866934333672:role/GitHubActionsDeployRole-HAProjectV2
-          aws-region: us-east-1
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-      - name: Terraform Init
-        run: terraform init
-        working-directory: ./terraform
-      - name: Terraform Apply
-        run: terraform apply -auto-approve tfplan
-        working-directory: ./terraform
+          role-to-assume: ${{ env.OIDC_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
 
-  # Add Staging and Production later after Development works
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        working-directory: ./terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ env.TF_STATE_BUCKET }}" \
+            -backend-config="key=ha-project/development/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -backend-config="use_lockfile=true" \
+            -backend-config="encrypt=true"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: tfplan-development
+          path: terraform/
+
+      - name: Targeted Foundational Apply (S3 + IAM + CloudWatch - safe during drift repair)
+        working-directory: ./terraform
+        run: |
+          terraform apply \
+            -var="db_password=${{ secrets.DB_PASSWORD }}" \
+            -var="environment=development" \
+            -target=aws_s3_bucket.frontend_builds \
+            -target=aws_s3_bucket_public_access_block.frontend_builds \
+            -target=aws_s3_bucket_versioning.frontend_builds \
+            -target=module.ec2.aws_iam_role.ec2_role \
+            -target=module.ec2.aws_iam_role_policy.s3_frontend_read \
+            -target=module.ec2.aws_iam_instance_profile.ec2_profile \
+            -target=module.monitoring \
+            -auto-approve || true
+
+      - name: Full Terraform Apply (Development)
+        working-directory: ./terraform
+        run: |
+          terraform apply -var="db_password=${{ secrets.DB_PASSWORD }}" -var="environment=development" -auto-approve
+
+      - name: Download Backend Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-zip
+          path: .
+
+      - name: Deploy React + Backend to S3
+        run: |
+          # Frontend
+          aws s3 sync ./app/build s3://${{ env.FRONTEND_BUCKET }}/frontend/current/ --delete
+          # Backend (now self-contained with node_modules from the build job)
+          aws s3 cp backend.zip s3://${{ env.FRONTEND_BUCKET }}/backend/backend.zip
+
+      - name: Trigger ASG Refresh (pick up new code)
+        run: |
+          aws autoscaling start-instance-refresh \
+            --auto-scaling-group-name ha-project-asg \
+            --strategy Rolling \
+            --preferences MinHealthyPercentage=50,InstanceWarmup=180 \
+            --region ${{ env.AWS_REGION }} || echo "Refresh skipped"
+
+  # ===================== DEPLOY TO STAGING (AUTO after dev) =====================
+  deploy-staging:
+    name: Deploy to Staging
+    needs: deploy-dev
+    if: github.ref == 'refs/heads/staging'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure AWS via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.OIDC_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init (Staging State)
+        working-directory: ./terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ env.TF_STATE_BUCKET }}" \
+            -backend-config="key=ha-project/staging/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -backend-config="use_lockfile=true" \
+            -backend-config="encrypt=true"
+
+      - name: Apply to Staging
+        working-directory: ./terraform
+        run: |
+          terraform apply \
+            -var="db_password=${{ secrets.DB_PASSWORD }}" \
+            -var="environment=staging" \
+            -auto-approve
+
+      - name: Download Backend Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-zip
+          path: .
+
+      - name: Deploy artifacts to Staging S3 prefix (extend later)
+        run: |
+          aws s3 sync ./app/build s3://${{ env.FRONTEND_BUCKET }}/frontend/staging/ --delete || true
+          # Backend upload for staging is commented out for now (extend later)
+          # aws s3 cp backend.zip s3://${{ env.FRONTEND_BUCKET }}/backend/backend-staging.zip || true
+
+  # ===================== PRODUCTION (MANUAL APPROVAL GATE) =====================
+  #
+  # MANUAL APPROVAL FLOW EXPLANATION:
+  # - When code is pushed to the 'main' branch, the pipeline runs through build + test-plan.
+  # - It then reaches the 'deploy-prod-approval' job.
+  # - This job uses GitHub Environments (environment: production).
+  # - Because of this, GitHub will pause the workflow and require manual approval
+  #   before continuing to the actual 'deploy-prod' job.
+  # - Approvers can approve (or reject) directly in the GitHub UI under the run's
+  #   "Review deployments" section.
+  # - This is the standard, secure way to gate production deployments.
+  # - The placeholder URL below can be updated later once you have a custom domain.
+  #
+  deploy-prod-approval:
+    name: Production Approval Gate
+    needs: [build, test-plan]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://github.com  # Replace with your prod ALB DNS later
+    steps:
+      - run: echo "✅ Manual approval granted for Production deployment"
+
+  deploy-prod:
+    name: Deploy to Production
+    needs: deploy-prod-approval
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure AWS via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.OIDC_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init (Prod State)
+        working-directory: ./terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ env.TF_STATE_BUCKET }}" \
+            -backend-config="key=ha-project/production/terraform.tfstate" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -backend-config="use_lockfile=true" \
+            -backend-config="encrypt=true"
+
+      - name: Production Apply (with extra caution)
+        working-directory: ./terraform
+        run: |
+          terraform apply \
+            -var="db_password=${{ secrets.DB_PASSWORD }}" \
+            -var="environment=production" \
+            -auto-approve
+
+      - name: Download Backend Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-zip
+          path: .
+
+      - name: Deploy to Production S3
+        run: |
+          aws s3 sync ./app/build s3://${{ env.FRONTEND_BUCKET }}/frontend/production/ --delete || true
+          aws s3 cp backend.zip s3://${{ env.FRONTEND_BUCKET }}/backend/backend-prod.zip
