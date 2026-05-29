@@ -4,12 +4,7 @@ variable "ec2_sg_id" {
 }
 
 variable "frontend_bucket_name" {
-  description = "S3 bucket name containing the React frontend builds"
-  type        = string
-}
-
-variable "frontend_bucket_name" {
-  description = "S3 bucket name that stores the React frontend build artifacts (current/ folder)"
+  description = "S3 bucket name for React frontend build artifacts (uploaded by CI, pulled by EC2 user-data)"
   type        = string
   default     = "ha-project-frontend-builds"
 }

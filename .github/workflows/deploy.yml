@@ -41,7 +41,7 @@ jobs:
       - name: Package Backend (self-contained with dependencies)
         working-directory: ./backend
         run: |
-          npm ci --production
+          npm ci --omit=dev
           zip -r ../backend.zip .
 
       - name: Upload Frontend Artifact
