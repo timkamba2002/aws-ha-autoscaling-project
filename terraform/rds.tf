@@ -3,7 +3,9 @@ resource "aws_db_subnet_group" "main" {
   subnet_ids = module.vpc.private_subnet_ids
 
   tags = {
-    Name = "main-db-subnet-group"
+    Name        = "main-db-subnet-group"
+    Environment = var.environment
+    ManagedBy   = "terraform"
   }
 }
 
@@ -25,6 +27,11 @@ resource "aws_security_group" "rds_sg" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
+  tags = {
+    Name        = "rds-sg"
+    Environment = var.environment
+  }
 }
 
 resource "aws_db_instance" "main" {
@@ -41,6 +48,12 @@ resource "aws_db_instance" "main" {
   vpc_security_group_ids = [aws_security_group.rds_sg.id]
   db_subnet_group_name   = aws_db_subnet_group.main.name
 
-  skip_final_snapshot    = true
+  skip_final_snapshot    = var.environment != "production"
   publicly_accessible    = false
+
+  tags = {
+    Name        = "myapp-rds"
+    Environment = var.environment
+    ManagedBy   = "terraform"
+  }
 }

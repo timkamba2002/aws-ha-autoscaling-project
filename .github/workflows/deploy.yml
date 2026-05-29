@@ -1,16 +1,25 @@
-name: CI/CD Pipeline - 3-Tier Web App
+name: CI/CD Pipeline - HA Autoscaling Project (React + RDS)
 
 on:
   push:
-    branches: 
+    branches:
       - development
+      - staging
+      - main
 
 permissions:
   id-token: write
   contents: read
 
+env:
+  TF_STATE_BUCKET: ha-project-terraform-state-866934333672
+  TF_STATE_KEY_DEV: ha-project/development/terraform.tfstate
+  TF_LOCK_TABLE: ha-project-terraform-locks
+  AWS_REGION: us-east-1
+  FRONTEND_BUCKET: ha-project-frontend-builds
+
 jobs:
-  build:
+  build-react:
     name: Build React App
     runs-on: ubuntu-latest
     steps:
@@ -18,40 +27,165 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - run: npm ci
+          cache: 'npm'
+          cache-dependency-path: app/package-lock.json
+      - name: Install & Build React (To-Do App)
         working-directory: ./app
-      - run: npm run build
-        working-directory: ./app
-      - uses: actions/upload-artifact@v4
+        run: |
+          npm ci
+          npm run build
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
         with:
           name: react-build
           path: app/build
+          retention-days: 7
 
   test-plan:
-    name: Test & Terraform Plan
-    needs: build
+    name: Test & Terraform Plan (Development)
+    needs: build-react
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      # ←←← THIS IS THE IMPORTANT PART
       - name: Configure AWS Credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::866934333672:role/GitHubActionsDeployRole-HAProjectV2
-          aws-region: us-east-1
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~> 1.7"
 
-      - name: Terraform Init
-        run: terraform init
+      - name: Terraform Init (Remote S3 Backend)
         working-directory: ./terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ env.TF_STATE_BUCKET }}" \
+            -backend-config="key=${{ env.TF_STATE_KEY_DEV }}" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -backend-config="dynamodb_table=${{ env.TF_LOCK_TABLE }}" \
+            -backend-config="encrypt=true"
 
       - name: Terraform Validate
-        run: terraform validate
         working-directory: ./terraform
+        run: terraform validate
 
       - name: Terraform Plan
-        run: terraform plan -out=tfplan
         working-directory: ./terraform
+        run: |
+          terraform plan \
+            -var="db_password=${{ secrets.DB_PASSWORD }}" \
+            -var="environment=development" \
+            -out=tfplan
+
+      - name: Upload plan artifact (for apply job)
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan
+          path: terraform/tfplan
+
+  deploy-dev:
+    name: Deploy to Development
+    needs: test-plan
+    runs-on: ubuntu-latest
+    # For production-like: add environment: development with protection rules later
+    if: github.ref == 'refs/heads/development'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::866934333672:role/GitHubActionsDeployRole-HAProjectV2
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~> 1.7"
+
+      - name: Terraform Init (Remote Backend)
+        working-directory: ./terraform
+        run: |
+          terraform init \
+            -backend-config="bucket=${{ env.TF_STATE_BUCKET }}" \
+            -backend-config="key=${{ env.TF_STATE_KEY_DEV }}" \
+            -backend-config="region=${{ env.AWS_REGION }}" \
+            -backend-config="dynamodb_table=${{ env.TF_LOCK_TABLE }}" \
+            -backend-config="encrypt=true"
+
+      - name: Download Terraform plan
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan
+          path: terraform/
+
+      - name: Targeted Apply - Foundational (S3 + IAM Role + VPC if needed)
+        # Use targeted applies during initial state repair to avoid ordering issues
+        # After state is healthy (resources imported), you can switch to full apply
+        working-directory: ./terraform
+        run: |
+          terraform apply \
+            -var="db_password=${{ secrets.DB_PASSWORD }}" \
+            -var="environment=development" \
+            -target=aws_s3_bucket.frontend_builds \
+            -target=aws_s3_bucket_public_access_block.frontend_builds \
+            -target=aws_s3_bucket_versioning.frontend_builds \
+            -target=module.ec2.aws_iam_role.ec2_role \
+            -target=module.ec2.aws_iam_role_policy.s3_frontend_read \
+            -target=module.ec2.aws_iam_instance_profile.ec2_profile \
+            -auto-approve \
+            -input=false || echo "Targeted foundational apply completed (or already up to date)"
+
+      - name: Full Terraform Apply (Development)
+        working-directory: ./terraform
+        run: |
+          terraform apply \
+            -var="db_password=${{ secrets.DB_PASSWORD }}" \
+            -var="environment=development" \
+            -auto-approve \
+            -input=false
+
+      - name: Download React build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: react-build
+          path: react-build/
+
+      - name: Deploy React build to S3 (for EC2 ASG instances to pull via user-data)
+        run: |
+          # Structure expected by user-data.sh.tpl : s3://bucket/frontend/current/
+          aws s3 sync react-build/ s3://${{ env.FRONTEND_BUCKET }}/frontend/current/ --delete
+          echo "✅ React build deployed to S3"
+          # Optional: also upload a zip for fallback
+          (cd react-build && zip -r ../frontend.zip . && cd ..)
+          aws s3 cp frontend.zip s3://${{ env.FRONTEND_BUCKET }}/frontend/latest.zip || true
+
+      - name: Trigger ASG Instance Refresh (optional - forces new instances to pick up latest build)
+        run: |
+          aws autoscaling start-instance-refresh \
+            --auto-scaling-group-name ha-project-asg \
+            --strategy Rolling \
+            --preferences '{"MinHealthyPercentage": 50, "InstanceWarmup": 120}' \
+            --region ${{ env.AWS_REGION }} || echo "Instance refresh skipped or ASG not ready yet"
+
+  # === FUTURE: Uncomment and configure when ready for Staging + Prod ===
+  # deploy-staging:
+  #   name: Deploy to Staging (Manual Approval)
+  #   needs: [test-plan]
+  #   runs-on: ubuntu-latest
+  #   environment: staging   # Configure in GitHub repo Settings > Environments with required reviewers
+  #   if: github.ref == 'refs/heads/staging'
+  #   steps:
+  #     - ... (copy pattern from deploy-dev, use different TF_STATE_KEY, var environment=staging)
+
+  # deploy-prod:
+  #   name: Deploy to Production
+  #   needs: [deploy-staging]
+  #   runs-on: ubuntu-latest
+  #   environment: production
+  #   if: github.ref == 'refs/heads/main'
+  #   steps: ...
