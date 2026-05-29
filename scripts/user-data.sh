@@ -11,4 +11,4 @@ cp -r /tmp/build/* /var/www/html/ 2>/dev/null || echo "<h1>React To-Do App</h1>"
 systemctl enable httpd
 systemctl restart httpd
 
-echo "✅ App is Live - $(date)" > /var/www/html/health.html
+echo "✅ React To-Do App is Live - $(date)" > /var/www/html/health.html
