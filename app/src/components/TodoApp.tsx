@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 
 const API_BASE = 'http://ha-project-alb-1568483483.us-east-1.elb.amazonaws.com/api';
 
@@ -17,7 +17,7 @@ const TodoApp: React.FC = () => {
 
   const userId = user?.uid || 'demo-user-123';
 
-  const fetchTodos = async () => {
+  const fetchTodos = useCallback(async () => {
     try {
       setLoading(true);
       const res = await fetch(`${API_BASE}/tasks?userId=${userId}`);
@@ -34,7 +34,7 @@ const TodoApp: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [userId]);
 
   const addTodo = async () => {
     if (!newTodo.trim()) return;
@@ -72,7 +72,7 @@ const TodoApp: React.FC = () => {
 
   useEffect(() => {
     if (user) fetchTodos();
-  }, [user]);
+  }, [user, fetchTodos]);
 
   return (
     <div style={{
