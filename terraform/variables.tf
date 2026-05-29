@@ -1,7 +1,8 @@
 variable "db_password" {
-  description = "Password for RDS database"
+  description = "Fallback password for RDS (SSM parameter takes priority)"
   type        = string
   sensitive   = true
+  default     = null
 }
 
 variable "region" {
@@ -20,4 +21,42 @@ variable "environment" {
   description = "Environment name (development, staging, production)"
   type        = string
   default     = "development"
+}
+
+# RDS / PostgreSQL
+variable "rds_identifier" {
+  description = "RDS instance identifier (use different name from any existing MySQL)"
+  type        = string
+  default     = "ha-project-postgres"
+}
+
+variable "postgres_version" {
+  type    = string
+  default = "15.7"
+}
+
+variable "db_instance_class" {
+  type    = string
+  default = "db.t3.micro"
+}
+
+variable "allocated_storage" {
+  type    = number
+  default = 20
+}
+
+variable "db_name" {
+  type    = string
+  default = "tododb"
+}
+
+variable "db_username" {
+  type    = string
+  default = "todouser"
+}
+
+variable "alarm_sns_topic_arn" {
+  description = "Optional SNS topic for CloudWatch alarm notifications"
+  type        = string
+  default     = null
 }

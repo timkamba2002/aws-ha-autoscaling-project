@@ -62,4 +62,8 @@ resource "aws_launch_template" "lt" {
       Name = "ha-project-frontend"
     }
   }
+
+  lifecycle {
+    ignore_changes = [user_data]
+  }
 }

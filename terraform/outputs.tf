@@ -12,3 +12,11 @@ output "rds_endpoint" {
 output "frontend_s3_bucket" {
   value = aws_s3_bucket.frontend_builds.id
 }
+
+output "backend_cloudwatch_log_group" {
+  value = module.monitoring.backend_log_group_name
+}
+
+output "rds_identifier" {
+  value = aws_db_instance.main.identifier
+}

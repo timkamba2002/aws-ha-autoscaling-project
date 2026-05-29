@@ -53,3 +53,19 @@ resource "aws_s3_bucket_versioning" "frontend_builds" {
     status = "Enabled"
   }
 }
+
+# ==================== MONITORING (CloudWatch Logs + Alarms) ====================
+module "monitoring" {
+  source = "./modules/monitoring"
+
+  environment                     = var.environment
+  backend_log_group_name          = "/aws/ec2/ha-project-backend"
+  rds_instance_identifier         = aws_db_instance.main.identifier
+  rds_cpu_threshold               = 80
+  rds_free_storage_threshold_bytes = 5 * 1024 * 1024 * 1024   # 5 GB
+  alarm_sns_topic_arn             = var.alarm_sns_topic_arn
+  tags = {
+    Environment = var.environment
+    ManagedBy   = "terraform"
+  }
+}
