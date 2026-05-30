@@ -245,20 +245,22 @@ jobs:
 
   # ===================== PRODUCTION (MANUAL APPROVAL GATE) =====================
   #
-  # MANUAL APPROVAL FLOW EXPLANATION:
-  # - When code is pushed to the 'main' branch, the pipeline runs through build + test-plan.
-  # - It then reaches the 'deploy-prod-approval' job.
-  # - This job uses GitHub Environments (environment: production).
-  # - Because of this, GitHub will pause the workflow and require manual approval
-  #   before continuing to the actual 'deploy-prod' job.
-  # - Approvers can approve (or reject) directly in the GitHub UI under the run's
-  #   "Review deployments" section.
-  # - This is the standard, secure way to gate production deployments.
-  # - The placeholder URL below can be updated later once you have a custom domain.
+  # PROMOTION FLOW:
+  #   Push to development branch → Deploy to Development
+  #   Push to staging branch     → Deploy to Staging
+  #   Push to main branch        → Approve Production Deployment (manual gate) → Deploy to Production
+  #
+  # The approval job depends on deploy-staging so the Actions graph shows a clear chain:
+  # Test & Terraform Plan → Deploy to Staging → Approve Production Deployment → Deploy to Production
+  #
+  # MANUAL APPROVAL:
+  # - Uses the "production" GitHub Environment (configure required reviewers in repo settings).
+  # - Approvers approve/reject from the "Review deployments" section in the run.
+  # - Update the environment URL to your real prod ALB DNS later.
   #
   deploy-prod-approval:
-    name: Production Approval Gate
-    needs: [build, test-plan]
+    name: Approve Production Deployment
+    needs: [build, test-plan, deploy-staging]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment:
@@ -318,4 +320,4 @@ jobs:
           aws s3 sync ./app/build s3://${{ env.FRONTEND_BUCKET }}/frontend/production/ --delete || true
           aws s3 cp backend.zip s3://${{ env.FRONTEND_BUCKET }}/backend/backend-prod.zip
 
-          # fsjfsj
+          # edit

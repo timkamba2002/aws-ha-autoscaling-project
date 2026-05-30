@@ -63,7 +63,12 @@ resource "aws_launch_template" "lt" {
     }
   }
 
-  lifecycle {
-    ignore_changes = [user_data]
-  }
+  # Temporarily commented out so a new Launch Template version is created
+  # with the updated user-data script. This is needed so the ASG can launch
+  # instances that properly pull the React build from S3.
+  # You can uncomment this again after the frontend is showing correctly.
+  #
+  # lifecycle {
+  #   ignore_changes = [user_data]
+  # }
 }
