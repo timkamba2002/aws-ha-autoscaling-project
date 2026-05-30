@@ -72,7 +72,7 @@ jobs:
 
       - uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: "~> 1.7"
+          terraform_version: "~> 1.10"
 
       - name: Terraform Init (Remote Backend)
         working-directory: ./terraform
@@ -317,3 +317,5 @@ jobs:
         run: |
           aws s3 sync ./app/build s3://${{ env.FRONTEND_BUCKET }}/frontend/production/ --delete || true
           aws s3 cp backend.zip s3://${{ env.FRONTEND_BUCKET }}/backend/backend-prod.zip
+
+          # fsjfsj
