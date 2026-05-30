@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 
-const API_BASE = 'http://ha-project-alb-1568483483.us-east-1.elb.amazonaws.com/api';
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://ha-project-alb-1568483483.us-east-1.elb.amazonaws.com/api';
 
 interface Todo {
   id: string;
@@ -14,14 +14,16 @@ const TodoApp: React.FC = () => {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [newTodo, setNewTodo] = useState('');
   const [loading, setLoading] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
 
   const userId = user?.uid || 'demo-user-123';
 
   const fetchTodos = useCallback(async () => {
     try {
       setLoading(true);
+      setApiError(null);
       const res = await fetch(`${API_BASE}/tasks?userId=${userId}`);
-      if (!res.ok) throw new Error('API error');
+      if (!res.ok) throw new Error(`API error: ${res.status}`);
       const data = await res.json();
       setTodos(data.map((t: any) => ({
         id: t.id,
@@ -31,6 +33,7 @@ const TodoApp: React.FC = () => {
       })));
     } catch (e) {
       console.error('Failed to fetch tasks', e);
+      setApiError('Cannot reach backend. Tasks cannot be loaded or saved right now.');
     } finally {
       setLoading(false);
     }
@@ -39,29 +42,35 @@ const TodoApp: React.FC = () => {
   const addTodo = async () => {
     if (!newTodo.trim()) return;
     try {
-      await fetch(`${API_BASE}/tasks`, {
+      setApiError(null);
+      const res = await fetch(`${API_BASE}/tasks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, title: newTodo.trim(), priority: 'Medium' })
       });
+      if (!res.ok) throw new Error(`Failed to save: ${res.status}`);
       setNewTodo('');
       await fetchTodos();
-    } catch {
-      alert('Failed to save task');
+    } catch (e) {
+      console.error(e);
+      setApiError('Failed to save task. Backend may be unreachable.');
     }
   };
 
   const toggleComplete = async (todo: Todo) => {
     const newStatus = todo.status === 'completed' ? 'pending' : 'completed';
     try {
-      await fetch(`${API_BASE}/tasks/${todo.id}`, {
+      setApiError(null);
+      const res = await fetch(`${API_BASE}/tasks/${todo.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId, status: newStatus })
       });
+      if (!res.ok) throw new Error(`Update failed: ${res.status}`);
       await fetchTodos();
-    } catch {
-      alert('Update failed');
+    } catch (e) {
+      console.error(e);
+      setApiError('Failed to update task. Backend may be unreachable.');
     }
   };
 
@@ -126,6 +135,19 @@ const TodoApp: React.FC = () => {
             <p style={{ marginBottom: 24, color: '#444' }}>
               Welcome, <strong>{user.displayName}</strong>
             </p>
+
+            {apiError && (
+              <div style={{
+                background: '#fff3cd',
+                color: '#856404',
+                padding: '12px 16px',
+                borderRadius: 8,
+                marginBottom: 20,
+                fontSize: 14
+              }}>
+                ⚠️ {apiError}
+              </div>
+            )}
 
             <div style={{ display: 'flex', gap: 12, marginBottom: 28 }}>
               <input
