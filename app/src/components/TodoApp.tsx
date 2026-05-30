@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://ha-project-alb-1568483483.us-east-1.elb.amazonaws.com/api';
+const API_BASE = process.env.REACT_APP_API_BASE || 'http://ha-project-alb-1568483483.us-east-1.elb.amazonaws.com/api';
 
 interface Todo {
   id: string;
