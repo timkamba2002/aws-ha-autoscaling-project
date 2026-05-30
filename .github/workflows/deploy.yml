@@ -93,6 +93,7 @@ jobs:
         working-directory: ./terraform
         run: |
           terraform plan \
+            -refresh=false \
             -var="db_password=${{ secrets.DB_PASSWORD }}" \
             -var="environment=${{ github.ref_name == 'main' && 'production' || github.ref_name == 'staging' && 'staging' || 'development' }}" \
             -out=tfplan
@@ -138,6 +139,7 @@ jobs:
         working-directory: ./terraform
         run: |
           terraform apply \
+            -refresh=false \
             -var="db_password=${{ secrets.DB_PASSWORD }}" \
             -var="environment=development" \
             -target=aws_s3_bucket.frontend_builds \
@@ -152,7 +154,11 @@ jobs:
       - name: Full Terraform Apply (Development)
         working-directory: ./terraform
         run: |
-          terraform apply -var="db_password=${{ secrets.DB_PASSWORD }}" -var="environment=development" -auto-approve
+          terraform apply \
+            -refresh=false \
+            -var="db_password=${{ secrets.DB_PASSWORD }}" \
+            -var="environment=development" \
+            -auto-approve
 
       - name: Download Backend Artifact
         uses: actions/download-artifact@v4
@@ -204,6 +210,7 @@ jobs:
         working-directory: ./terraform
         run: |
           terraform apply \
+            -refresh=false \
             -var="db_password=${{ secrets.DB_PASSWORD }}" \
             -var="environment=staging" \
             -auto-approve
@@ -272,6 +279,7 @@ jobs:
         working-directory: ./terraform
         run: |
           terraform apply \
+            -refresh=false \
             -var="db_password=${{ secrets.DB_PASSWORD }}" \
             -var="environment=production" \
             -auto-approve
