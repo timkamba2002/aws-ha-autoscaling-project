@@ -63,12 +63,13 @@ resource "aws_launch_template" "lt" {
     }
   }
 
-  # Temporarily commented out so a new Launch Template version is created
-  # with the updated user-data script. This is needed so the ASG can launch
-  # instances that properly pull the React build from S3.
-  # You can uncomment this again after the frontend is showing correctly.
+  # IMPORTANT FOR DEMO:
+  # We deliberately do NOT ignore user_data changes.
+  # Every time you change this file (or the .tpl) and run Terraform apply
+  # via the GitHub workflow, a new Launch Template version is published.
+  # The ASG ($Latest) + Instance Refresh then brings up fresh instances
+  # with the new user-data (early placeholder + React from S3).
+  # This is what makes "the site shows again" after fixes.
   #
-  # lifecycle {
-  #   ignore_changes = [user_data]
-  # }
+  # After your presentation you can add the ignore_changes block back if desired.
 }
