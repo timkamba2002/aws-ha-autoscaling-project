@@ -190,26 +190,40 @@ jobs:
         run: |
           ASG_NAME="ha-project-asg"
 
-          # Get any in-progress refresh ID (trim whitespace)
-          IN_PROGRESS=$(aws autoscaling describe-instance-refreshes \
-            --auto-scaling-group-name $ASG_NAME \
-            --query "InstanceRefreshes[?Status=='InProgress'].InstanceRefreshId" \
-            --output text 2>/dev/null | tr -d '[:space:]' || true)
+          echo "=== Cleaning up any stuck Instance Refreshes ==="
 
-          if [ -n "$IN_PROGRESS" ] && [ "$IN_PROGRESS" != "None" ]; then
-            echo "Cancelling previous refresh: $IN_PROGRESS"
-            aws autoscaling cancel-instance-refresh \
+          for attempt in 1 2 3 4; do
+            IN_PROGRESS=$(aws autoscaling describe-instance-refreshes \
               --auto-scaling-group-name $ASG_NAME \
-              --instance-refresh-id "$IN_PROGRESS" || true
-            sleep 20
-          fi
+              --query "InstanceRefreshes[?Status=='InProgress'].InstanceRefreshId" \
+              --output text 2>/dev/null | tr -d '[:space:]' || true)
 
-          echo "Starting fresh Instance Refresh..."
+            if [ -n "$IN_PROGRESS" ] && [ "$IN_PROGRESS" != "None" ]; then
+              echo "Attempt $attempt: Cancelling in-progress refresh: $IN_PROGRESS"
+              aws autoscaling cancel-instance-refresh \
+                --auto-scaling-group-name $ASG_NAME \
+                --instance-refresh-id "$IN_PROGRESS" || true
+              sleep 45
+            else
+              echo "No in-progress refresh found on attempt $attempt"
+              break
+            fi
+          done
+
+          echo "=== Starting new Instance Refresh ==="
           aws autoscaling start-instance-refresh \
             --auto-scaling-group-name $ASG_NAME \
             --strategy Rolling \
-            --preferences MinHealthyPercentage=0,InstanceWarmup=120 \
-            --region ${{ env.AWS_REGION }} || true
+            --preferences MinHealthyPercentage=0,InstanceWarmup=90 \
+            --region ${{ env.AWS_REGION }} || echo "Start command completed (check status below)"
+
+          # Show current refresh status for visibility in logs
+          echo "Current Instance Refresh status:"
+          aws autoscaling describe-instance-refreshes \
+            --auto-scaling-group-name $ASG_NAME \
+            --max-records 3 \
+            --query "InstanceRefreshes[].[InstanceRefreshId,Status,StatusReason]" \
+            --output text 2>/dev/null || true
 
       - name: Note
         run: echo "✅ Dev deploy finished. Wait 3-6 minutes then open ALB."
