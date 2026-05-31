@@ -175,7 +175,7 @@ jobs:
         run: |
           aws s3 sync ./frontend-dist s3://${{ env.FRONTEND_BUCKET }}/frontend/current/ --delete
 
-      - name: Trigger ASG Instance Refresh
+      - name: Trigger ASG Instance Refresh (full stack deploy)
         run: |
           ASG_NAME="ha-project-asg"
           IN_PROGRESS=$(aws autoscaling describe-instance-refreshes \
@@ -183,13 +183,16 @@ jobs:
             --query "InstanceRefreshes[?Status=='InProgress'].InstanceRefreshId" \
             --output text 2>/dev/null || true)
           if [ -n "$IN_PROGRESS" ] && [ "$IN_PROGRESS" != "None" ]; then
+            echo "Cancelling previous refresh: $IN_PROGRESS"
             aws autoscaling cancel-instance-refresh --auto-scaling-group-name $ASG_NAME --instance-refresh-id $IN_PROGRESS || true
-            sleep 15
+            sleep 20
           fi
+
+          echo "Starting Instance Refresh with safer warmup for full-stack (frontend + backend)"
           aws autoscaling start-instance-refresh \
             --auto-scaling-group-name $ASG_NAME \
             --strategy Rolling \
-            --preferences MinHealthyPercentage=0,InstanceWarmup=60 \
+            --preferences MinHealthyPercentage=0,InstanceWarmup=120 \
             --region ${{ env.AWS_REGION }} || true
 
       - name: Note

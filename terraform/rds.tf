@@ -68,3 +68,26 @@ resource "aws_db_instance" "main" {
     ManagedBy   = "terraform"
   }
 }
+
+# Store connection details in SSM so EC2 user-data can reliably fetch them
+resource "aws_ssm_parameter" "db_host" {
+  name  = "/ha-project/development/db_host"
+  type  = "String"
+  value = aws_db_instance.main.endpoint
+
+  tags = {
+    Environment = var.environment
+    ManagedBy   = "terraform"
+  }
+}
+
+resource "aws_ssm_parameter" "db_user" {
+  name  = "/ha-project/development/db_user"
+  type  = "String"
+  value = "admin"
+
+  tags = {
+    Environment = var.environment
+    ManagedBy   = "terraform"
+  }
+}
