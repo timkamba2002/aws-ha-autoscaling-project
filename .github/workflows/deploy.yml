@@ -140,6 +140,13 @@ jobs:
           role-to-assume: ${{ env.OIDC_ROLE }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Upgrade AWS CLI (needed for cancel-instance-refresh)
+        run: |
+          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          unzip -q awscliv2.zip
+          sudo ./aws/install --update
+          aws --version
+
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "~> 1.10"
@@ -182,17 +189,22 @@ jobs:
       - name: Trigger ASG Instance Refresh (full stack deploy)
         run: |
           ASG_NAME="ha-project-asg"
+
+          # Get any in-progress refresh ID (trim whitespace)
           IN_PROGRESS=$(aws autoscaling describe-instance-refreshes \
             --auto-scaling-group-name $ASG_NAME \
             --query "InstanceRefreshes[?Status=='InProgress'].InstanceRefreshId" \
-            --output text 2>/dev/null || true)
+            --output text 2>/dev/null | tr -d '[:space:]' || true)
+
           if [ -n "$IN_PROGRESS" ] && [ "$IN_PROGRESS" != "None" ]; then
             echo "Cancelling previous refresh: $IN_PROGRESS"
-            aws autoscaling cancel-instance-refresh --auto-scaling-group-name $ASG_NAME --instance-refresh-id $IN_PROGRESS || true
+            aws autoscaling cancel-instance-refresh \
+              --auto-scaling-group-name $ASG_NAME \
+              --instance-refresh-id "$IN_PROGRESS" || true
             sleep 20
           fi
 
-          echo "Starting Instance Refresh with safer warmup for full-stack (frontend + backend)"
+          echo "Starting fresh Instance Refresh..."
           aws autoscaling start-instance-refresh \
             --auto-scaling-group-name $ASG_NAME \
             --strategy Rolling \
