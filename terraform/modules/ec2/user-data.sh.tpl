@@ -1,17 +1,56 @@
 #!/bin/bash
-set +e  # Don't die on any single failure — we want the instance to be as usable as possible
+set +e
 
-BOOTSTRAP_LOG="/var/www/html/bootstrap.log"
-# Write a very early "I'm alive" page in case the script dies later
+# ============================================================
+# ULTRA EARLY: Make the web server healthy in the first 10 seconds
+# This must succeed or the ALB will keep returning 502.
+# ============================================================
+
 mkdir -p /var/www/html
 cat > /var/www/html/index.html << 'HTMLEOF'
 <!doctype html><html><body style="font-family:sans-serif;padding:2rem">
-<h1>Instance is booting...</h1>
-<p>Please wait for the bootstrap to finish (usually 1-3 minutes).</p>
+<h1>Instance is initializing...</h1>
+<p>Bootstrap is still running. Please wait 1-2 minutes and refresh.</p>
 </body></html>
 HTMLEOF
 
-echo "=== HA Project Instance Bootstrap - $(date) ===" | tee -a "$BOOTSTRAP_LOG" 2>/dev/null || true
+echo "OK $(date -Iseconds)" > /var/www/html/health
+
+# Minimal nginx config that is almost impossible to break
+cat > /etc/nginx/conf.d/ha-project.conf << 'NGINXEOF'
+server {
+    listen 80 default_server;
+    server_name _;
+    root /var/www/html;
+    index index.html;
+
+    location = /health {
+        access_log off;
+        return 200 "OK\n";
+        add_header Content-Type text/plain;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
+NGINXEOF
+
+# Start nginx immediately
+systemctl enable nginx 2>/dev/null || true
+systemctl start nginx || systemctl restart nginx || true
+
+# Now set up logging
+BOOTSTRAP_LOG="/var/www/html/bootstrap.log"
+echo "=== HA Project Instance Bootstrap started at $(date) ===" > "$BOOTSTRAP_LOG" 2>/dev/null || true
+
+# Detect OS
+if [ -f /etc/amazon-linux-release ]; then
+  OS="al2"
+else
+  OS="al2023"
+fi
+echo "OS: $OS" >> "$BOOTSTRAP_LOG" 2>/dev/null || true
 
 # Detect Amazon Linux 2 vs 2023
 if [ -f /etc/amazon-linux-release ]; then
