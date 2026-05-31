@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 
-const API_BASE = process.env.REACT_APP_API_BASE || 'http://ha-project-alb-1568483483.us-east-1.elb.amazonaws.com/api';
+const API_BASE = process.env.REACT_APP_API_BASE || '';
 
 interface Todo {
   id: string;
@@ -22,6 +22,11 @@ const TodoApp: React.FC = () => {
     try {
       setLoading(true);
       setApiError(null);
+
+      if (!API_BASE) {
+        throw new Error('REACT_APP_API_BASE is not set');
+      }
+
       const res = await fetch(`${API_BASE}/tasks?userId=${userId}`);
       if (!res.ok) throw new Error(`API error: ${res.status}`);
       const data = await res.json();
@@ -41,6 +46,12 @@ const TodoApp: React.FC = () => {
 
   const addTodo = async () => {
     if (!newTodo.trim()) return;
+
+    if (!API_BASE) {
+      setApiError('REACT_APP_API_BASE is not set. Cannot save tasks.');
+      return;
+    }
+
     try {
       setApiError(null);
       const res = await fetch(`${API_BASE}/tasks`, {
@@ -59,6 +70,12 @@ const TodoApp: React.FC = () => {
 
   const toggleComplete = async (todo: Todo) => {
     const newStatus = todo.status === 'completed' ? 'pending' : 'completed';
+
+    if (!API_BASE) {
+      setApiError('REACT_APP_API_BASE is not set. Cannot update tasks.');
+      return;
+    }
+
     try {
       setApiError(null);
       const res = await fetch(`${API_BASE}/tasks/${todo.id}`, {
@@ -135,6 +152,16 @@ const TodoApp: React.FC = () => {
             <p style={{ marginBottom: 24, color: '#444' }}>
               Welcome, <strong>{user.displayName}</strong>
             </p>
+
+            {/* Debug info - shows what API the frontend is actually calling */}
+            <div style={{
+              fontSize: 11,
+              color: '#888',
+              marginBottom: 12,
+              wordBreak: 'break-all'
+            }}>
+              API Base: {API_BASE || '(not set — will fail)'}
+            </div>
 
             {apiError && (
               <div style={{
