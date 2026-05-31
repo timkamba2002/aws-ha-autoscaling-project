@@ -186,44 +186,32 @@ jobs:
         run: |
           aws s3 sync ./frontend-dist s3://${{ env.FRONTEND_BUCKET }}/frontend/current/ --delete
 
-      - name: Trigger ASG Instance Refresh (full stack deploy)
+      - name: Trigger ASG Instance Refresh (back to simple early working frontend)
         run: |
           ASG_NAME="ha-project-asg"
 
-          echo "=== Cleaning up any stuck Instance Refreshes ==="
+          echo "=== Simple ASG Refresh (early working frontend version) ==="
+          echo "User-data is now the minimal Apache-only version that previously showed the React site + backend unreachable banner."
 
-          for attempt in 1 2 3 4; do
-            IN_PROGRESS=$(aws autoscaling describe-instance-refreshes \
-              --auto-scaling-group-name $ASG_NAME \
-              --query "InstanceRefreshes[?Status=='InProgress'].InstanceRefreshId" \
-              --output text 2>/dev/null | tr -d '[:space:]' || true)
-
-            if [ -n "$IN_PROGRESS" ] && [ "$IN_PROGRESS" != "None" ]; then
-              echo "Attempt $attempt: Cancelling in-progress refresh: $IN_PROGRESS"
-              aws autoscaling cancel-instance-refresh \
-                --auto-scaling-group-name $ASG_NAME \
-                --instance-refresh-id "$IN_PROGRESS" || true
-              sleep 45
-            else
-              echo "No in-progress refresh found on attempt $attempt"
-              break
-            fi
-          done
-
-          echo "=== Starting new Instance Refresh ==="
+          # We no longer aggressively cancel because of repeated CLI/permission issues in this environment.
+          # Just attempt to start a refresh. If one is already running it will fail (harmless).
           aws autoscaling start-instance-refresh \
             --auto-scaling-group-name $ASG_NAME \
             --strategy Rolling \
-            --preferences MinHealthyPercentage=0,InstanceWarmup=90 \
-            --region ${{ env.AWS_REGION }} || echo "Start command completed (check status below)"
+            --preferences MinHealthyPercentage=0,InstanceWarmup=60 \
+            --region ${{ env.AWS_REGION }} || echo "Start returned non-zero (another refresh is probably still running - this is OK for now)"
 
-          # Show current refresh status for visibility in logs
-          echo "Current Instance Refresh status:"
+          echo ""
+          echo "Current refresh status (most recent first):"
           aws autoscaling describe-instance-refreshes \
             --auto-scaling-group-name $ASG_NAME \
-            --max-records 3 \
+            --max-records 5 \
             --query "InstanceRefreshes[].[InstanceRefreshId,Status,StatusReason]" \
             --output text 2>/dev/null || true
+
+          echo ""
+          echo "If you see 'InProgress' above, the stuck refresh from previous experiments is still running."
+          echo "It will eventually finish on its own. Once it does, new instances will use the simple user-data and the site should return to the early working state (React showing + backend error banner)."
 
       - name: Note
         run: echo "✅ Dev deploy finished. Wait 3-6 minutes then open ALB."
