@@ -91,9 +91,9 @@ fi
 if [ -d /opt/ha-backend ]; then
   cat > /opt/ha-backend/.env << EOF
 PORT=3000
-DB_HOST=${DB_HOST}
-DB_USER=${DB_USER}
-DB_PASSWORD=${DB_PASSWORD}
+DB_HOST=$${DB_HOST}
+DB_USER=$${DB_USER}
+DB_PASSWORD=$${DB_PASSWORD}
 DB_NAME=myappdb
 NODE_ENV=production
 EOF
