@@ -71,9 +71,10 @@ resource "aws_db_instance" "main" {
 
 # Store connection details in SSM so EC2 user-data can reliably fetch them
 resource "aws_ssm_parameter" "db_host" {
-  name  = "/ha-project/development/db_host"
-  type  = "String"
-  value = aws_db_instance.main.endpoint
+  name      = "/ha-project/development/db_host"
+  type      = "String"
+  value     = aws_db_instance.main.endpoint
+  overwrite = true   # Prevents "ParameterAlreadyExists" errors
 
   tags = {
     Environment = var.environment
@@ -82,9 +83,10 @@ resource "aws_ssm_parameter" "db_host" {
 }
 
 resource "aws_ssm_parameter" "db_user" {
-  name  = "/ha-project/development/db_user"
-  type  = "String"
-  value = "admin"
+  name      = "/ha-project/development/db_user"
+  type      = "String"
+  value     = "admin"
+  overwrite = true   # Prevents "ParameterAlreadyExists" errors on re-runs
 
   tags = {
     Environment = var.environment
