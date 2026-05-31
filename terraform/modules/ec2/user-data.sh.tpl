@@ -82,9 +82,12 @@ DB_HOST=$(aws ssm get-parameter --name "/ha-project/development/db_host" --query
 DB_USER=$(aws ssm get-parameter --name "/ha-project/development/db_user" --query "Parameter.Value" --output text 2>/dev/null || echo "admin")
 
 if [ -z "$DB_HOST" ]; then
-  echo "DB_HOST not found in SSM - you may need to set /ha-project/development/db_host"
-  # Fallback: try to use a common pattern (update this if needed after checking Terraform output)
-  DB_HOST="myapp-rds.c3s0q0k0k0k0.us-east-1.rds.amazonaws.com"
+  echo "WARNING: DB_HOST not found in SSM (/ha-project/development/db_host)"
+  echo "Backend will likely fail to connect to the database."
+  echo "For demo purposes the frontend will still work."
+  # No good fallback possible without console/SSM access.
+  # Set DB_HOST to a placeholder so the app starts (it will just fail DB queries).
+  DB_HOST="placeholder-db-host-not-set"
 fi
 
 # Create .env for backend
