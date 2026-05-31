@@ -2,6 +2,15 @@
 set +e  # Don't die on any single failure — we want the instance to be as usable as possible
 
 BOOTSTRAP_LOG="/var/www/html/bootstrap.log"
+# Write a very early "I'm alive" page in case the script dies later
+mkdir -p /var/www/html
+cat > /var/www/html/index.html << 'HTMLEOF'
+<!doctype html><html><body style="font-family:sans-serif;padding:2rem">
+<h1>Instance is booting...</h1>
+<p>Please wait for the bootstrap to finish (usually 1-3 minutes).</p>
+</body></html>
+HTMLEOF
+
 echo "=== HA Project Instance Bootstrap - $(date) ===" | tee -a "$BOOTSTRAP_LOG" 2>/dev/null || true
 
 # Detect Amazon Linux 2 vs 2023
@@ -80,60 +89,55 @@ cd /opt/ha-backend
 npm install --production 2>&1 | tail -5 || true
 echo "Backend npm install done" | tee -a "$BOOTSTRAP_LOG" 2>/dev/null || true
 
-# ==================== NGINX REVERSE PROXY (React + API) ====================
+# ==================== NGINX (simple and robust) ====================
 echo "Configuring nginx..." | tee -a "$BOOTSTRAP_LOG" 2>/dev/null || true
+
+# Very simple, hard-to-break nginx config
 cat > /etc/nginx/conf.d/ha-project.conf << 'NGINXEOF'
 server {
-    listen 80;
+    listen 80 default_server;
     server_name _;
 
     root /var/www/html;
     index index.html;
 
-    # Health check for ALB
+    # Always return 200 for ALB health check
     location = /health {
         access_log off;
         return 200 "OK\n";
         add_header Content-Type text/plain;
     }
 
-    # API proxy to Node backend on port 3000
-    # If backend is down, return a friendly JSON instead of 502
+    # API - proxy if backend is up, otherwise friendly error
     location /api/ {
         proxy_pass http://127.0.0.1:3000;
         proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_cache_bypass $http_upgrade;
 
         proxy_intercept_errors on;
-        error_page 502 503 504 = @api_fallback;
+        error_page 502 503 504 = @api_down;
     }
 
-    location @api_fallback {
+    location @api_down {
         default_type application/json;
-        return 503 '{"error":"Backend temporarily unavailable","status":"down"}';
+        return 503 '{"error":"backend_unavailable"}';
     }
 
-    # React SPA - all other routes return index.html
+    # Everything else = React SPA
     location / {
         try_files $uri $uri/ /index.html;
     }
 }
 NGINXEOF
 
-# Enable and start Nginx (this is critical for the site to work)
-systemctl enable nginx
-if systemctl restart nginx; then
-  echo "✅ Nginx started successfully" | tee -a "$BOOTSTRAP_LOG" 2>/dev/null || true
-else
-  echo "⚠️ Nginx restart failed, trying start" | tee -a "$BOOTSTRAP_LOG" 2>/dev/null || true
-  systemctl start nginx || true
-fi
+# Make sure nginx is always running
+systemctl enable nginx || true
+systemctl start nginx || systemctl restart nginx || true
+
+echo "Nginx config applied" | tee -a "$BOOTSTRAP_LOG" 2>/dev/null || true
 
 # ==================== RUN BACKEND AS SYSTEMD SERVICE ====================
 echo "Creating backend systemd service..." | tee -a "$BOOTSTRAP_LOG" 2>/dev/null || true
