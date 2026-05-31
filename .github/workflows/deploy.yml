@@ -1,9 +1,17 @@
 name: CI/CD - HA 3-Tier To-Do App (React + Node + MySQL)
 
 on:
-  push:
-    branches: [development, staging, main]
   workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'development'
+        type: choice
+        options:
+          - development
+          - staging
+          - production
 
 permissions:
   id-token: write
@@ -110,7 +118,7 @@ jobs:
   deploy-dev:
     name: Deploy to Development
     needs: [build, test-plan]
-    if: github.ref == 'refs/heads/development'
+    if: github.event.inputs.environment == 'development'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -212,8 +220,8 @@ jobs:
   # ===================== DEPLOY TO STAGING (AUTO after dev) =====================
   deploy-staging:
     name: Deploy to Staging
-    needs: deploy-dev
-    if: github.ref == 'refs/heads/staging'
+    needs: [build, test-plan]
+    if: github.event.inputs.environment == 'staging'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -264,23 +272,23 @@ jobs:
 
   # ===================== PRODUCTION (MANUAL APPROVAL GATE) =====================
   #
-  # PROMOTION FLOW:
-  #   Push to development branch → Deploy to Development
-  #   Push to staging branch     → Deploy to Staging
-  #   Push to main branch        → Approve Production Deployment (manual gate) → Deploy to Production
+  # MANUAL PROMOTION FLOW (via workflow_dispatch):
+  #   1. Select "development" → Deploys to Development environment
+  #   2. Select "staging"     → Deploys to Staging environment
+  #   3. Select "production"  → Goes through "Approve Production Deployment" (manual gate via GitHub Environment) → Deploys to Production
   #
-  # The approval job depends on deploy-staging so the Actions graph shows a clear chain:
-  # Test & Terraform Plan → Deploy to Staging → Approve Production Deployment → Deploy to Production
+  # This creates clean manual buttons in the Actions UI for controlled promotions.
   #
-  # MANUAL APPROVAL:
-  # - Uses the "production" GitHub Environment (configure required reviewers in repo settings).
-  # - Approvers approve/reject from the "Review deployments" section in the run.
+  # PRODUCTION APPROVAL:
+  # - Uses the "production" GitHub Environment.
+  # - Configure required reviewers in repo Settings → Environments → production.
+  # - Approvers will see the run in "Review deployments".
   # - Update the environment URL to your real prod ALB DNS later.
   #
   deploy-prod-approval:
     name: Approve Production Deployment
-    needs: [build, test-plan, deploy-staging]
-    if: github.ref == 'refs/heads/main'
+    needs: [build, test-plan]
+    if: github.event.inputs.environment == 'production'
     runs-on: ubuntu-latest
     environment:
       name: production
@@ -291,7 +299,7 @@ jobs:
   deploy-prod:
     name: Deploy to Production
     needs: deploy-prod-approval
-    if: github.ref == 'refs/heads/main'
+    if: github.event.inputs.environment == 'production'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
