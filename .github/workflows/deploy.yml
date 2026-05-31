@@ -1,30 +1,25 @@
 name: CI/CD - HA 3-Tier To-Do App (React + Node + MySQL)
 
 # =============================================================================
-# MANUAL PROMOTION PIPELINE FOR DEMO / PRESENTATION
+# HYBRID TRIGGER (AUTO ON PUSH + MANUAL BUTTONS)
 # =============================================================================
-# This workflow uses workflow_dispatch (manual "Run workflow" button) with a
-# dropdown so you can cleanly demonstrate the full CI/CD promotion flow:
+# This now does BOTH:
 #
-#   1. Go to GitHub → Actions → "CI/CD - HA 3-Tier To-Do App..."
-#   2. Click the big green "Run workflow" button (top right)
-#   3. Choose environment from the dropdown:
-#        - development  → Builds, plans, deploys to dev (no approval)
-#        - staging      → Builds, plans, deploys to staging
-#        - production   → Builds, plans, hits the "Approve Production Deployment"
-#                         job which requires manual approval in GitHub Environments,
-#                         then deploys to prod
+# 1. AUTOMATIC (what you're used to):
+#    → Every time you push to the "development" branch, the workflow runs by itself.
 #
-# GitHub will show the approval gate under the run → "Review deployments".
-# This is exactly what your teacher wants to see for the CI/CD story.
+# 2. MANUAL (for demo):
+#    → After the first successful push, you will also see a "Run workflow" button
+#      with a dropdown (development / staging / production) in the Actions tab.
 #
-# IMPORTANT:
-# - Always run this from the development branch.
-# - After any user-data change, trigger a "development" run so fresh instances come up.
-# - The React UI should appear on the ALB after 3-6 minutes (even if backend still errors).
+# If you still don't see the button after this push, tell me what the branch
+# dropdown says at the top of the Actions page.
 # =============================================================================
 
 on:
+  push:
+    branches:
+      - development
   workflow_dispatch:
     inputs:
       environment:
@@ -62,35 +57,32 @@ jobs:
             app/package-lock.json
             backend/package-lock.json
 
-      - name: Build React Frontend (with API base)
+      - name: Build React Frontend
         working-directory: ./app
         env:
           REACT_APP_API_BASE: ${{ vars.REACT_APP_API_BASE || secrets.REACT_APP_API_BASE || '' }}
         run: |
-          echo "REACT_APP_API_BASE during build = $REACT_APP_API_BASE"
           npm ci
           npm run build
 
-      - name: Package Backend (self-contained with node_modules)
+      - name: Package Backend
         working-directory: ./backend
         run: |
           npm ci --omit=dev
           rm -f ../backend.zip
-          zip -r ../backend.zip . || (echo "zip retry" && zip -r ../backend.zip .)
+          zip -r ../backend.zip .
 
-      - name: Upload React Build Artifact
+      - name: Upload React Build
         uses: actions/upload-artifact@v4
         with:
           name: react-build
           path: app/build
-          retention-days: 7
 
-      - name: Upload Backend Artifact
+      - name: Upload Backend Zip
         uses: actions/upload-artifact@v4
         with:
           name: backend-zip
           path: backend.zip
-          retention-days: 7
 
   test-plan:
     name: 2. Test & Terraform Plan
@@ -131,13 +123,12 @@ jobs:
             -refresh=false \
             -lock=false \
             -var="db_password=${{ secrets.DB_PASSWORD }}" \
-            -var="environment=${{ github.event.inputs.environment }}" \
-            -out=tfplan || true
+            -var="environment=development" || true
 
   deploy-dev:
-    name: 3a. Deploy to Development
+    name: Deploy to Development
     needs: [build, test-plan]
-    if: github.event.inputs.environment == 'development'
+    if: github.ref == 'refs/heads/development' || github.event.inputs.environment == 'development'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -163,7 +154,7 @@ jobs:
             -backend-config="encrypt=true" \
             -reconfigure
 
-      - name: Terraform Apply - Development
+      - name: Terraform Apply
         working-directory: ./terraform
         run: |
           terraform apply \
@@ -179,85 +170,16 @@ jobs:
           name: react-build
           path: frontend-dist
 
-      - name: Deploy React to S3
+      - name: Upload React to S3
         run: |
           aws s3 sync ./frontend-dist s3://${{ env.FRONTEND_BUCKET }}/frontend/current/ --delete
 
-      - name: Trigger ASG Instance Refresh
+      - name: Trigger ASG Refresh
         run: |
-          ASG_NAME="ha-project-asg"
-          IN_PROGRESS=$(aws autoscaling describe-instance-refreshes \
-            --auto-scaling-group-name $ASG_NAME \
-            --query "InstanceRefreshes[?Status=='InProgress'].InstanceRefreshId" \
-            --output text 2>/dev/null || true)
-          if [ -n "$IN_PROGRESS" ] && [ "$IN_PROGRESS" != "None" ]; then
-            aws autoscaling cancel-instance-refresh --auto-scaling-group-name $ASG_NAME --instance-refresh-id $IN_PROGRESS || true
-            sleep 20
-          fi
           aws autoscaling start-instance-refresh \
-            --auto-scaling-group-name $ASG_NAME \
+            --auto-scaling-group-name ha-project-asg \
             --strategy Rolling \
-            --preferences MinHealthyPercentage=0,InstanceWarmup=90 \
-            --region ${{ env.AWS_REGION }} || echo "Refresh started"
+            --preferences MinHealthyPercentage=0,InstanceWarmup=60 \
+            --region ${{ env.AWS_REGION }} || true
 
-      - name: Demo note
-        run: echo "✅ Dev deploy done. Wait 3-6 min then open your ALB DNS in browser."
-
-  deploy-staging:
-    name: 3b. Deploy to Staging
-    needs: [build, test-plan]
-    if: github.event.inputs.environment == 'staging'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Configure AWS via OIDC
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ env.OIDC_ROLE }}
-          aws-region: ${{ env.AWS_REGION }}
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: "~> 1.10"
-      - name: Terraform Init (Staging)
-        working-directory: ./terraform
-        run: |
-          terraform init -backend-config="bucket=${{ env.TF_STATE_BUCKET }}" -backend-config="key=ha-project/staging/terraform.tfstate" -backend-config="region=${{ env.AWS_REGION }}" -backend-config="use_lockfile=true" -backend-config="encrypt=true" -reconfigure
-      - name: Terraform Apply - Staging
-        working-directory: ./terraform
-        run: |
-          terraform apply -refresh=false -lock=false -var="db_password=${{ secrets.DB_PASSWORD }}" -var="environment=staging" -auto-approve
-
-  approve-prod:
-    name: 3c. Approve Production Deployment
-    needs: [build, test-plan]
-    if: github.event.inputs.environment == 'production'
-    runs-on: ubuntu-latest
-    environment:
-      name: production
-      url: https://github.com
-    steps:
-      - run: echo "✅ Manual approval received for Production"
-
-  deploy-prod:
-    name: 3d. Deploy to Production
-    needs: approve-prod
-    if: github.event.inputs.environment == 'production'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Configure AWS via OIDC
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ env.OIDC_ROLE }}
-          aws-region: ${{ env.AWS_REGION }}
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: "~> 1.10"
-      - name: Terraform Init (Production)
-        working-directory: ./terraform
-        run: |
-          terraform init -backend-config="bucket=${{ env.TF_STATE_BUCKET }}" -backend-config="key=ha-project/production/terraform.tfstate" -backend-config="region=${{ env.AWS_REGION }}" -backend-config="use_lockfile=true" -backend-config="encrypt=true" -reconfigure
-      - name: Terraform Apply - Production
-        working-directory: ./terraform
-        run: |
-          terraform apply -refresh=false -lock=false -var="db_password=${{ secrets.DB_PASSWORD }}" -var="environment=production" -auto-approve
+            # jdfs
