@@ -19,12 +19,9 @@ name: CI/CD - HA 3-Tier To-Do App (React + Node + MySQL)
 # This is exactly what your teacher wants to see for the CI/CD story.
 #
 # IMPORTANT:
-# - Always run this from the development branch (or the branch you want to promote).
-# - After any user-data / launch template change, trigger a "development" run
-#   so the ASG Instance Refresh brings up fresh instances with the new config.
-# - The React frontend will appear on the ALB once the S3 sync + instance refresh
-#   completes (usually 3-6 minutes). Backend /api may still 404 or error — that is
-#   expected and acceptable for the "site is at least showing" milestone.
+# - Always run this from the development branch.
+# - After any user-data change, trigger a "development" run so fresh instances come up.
+# - The React UI should appear on the ALB after 3-6 minutes (even if backend still errors).
 # =============================================================================
 
 on:
@@ -51,7 +48,6 @@ env:
   OIDC_ROLE: arn:aws:iam::866934333672:role/GitHubActionsDeployRole-HAProjectV2
 
 jobs:
-  # ===================== 1. BUILD (React + self-contained backend) =====================
   build:
     name: 1. Build React + Backend
     runs-on: ubuntu-latest
@@ -74,13 +70,11 @@ jobs:
           echo "REACT_APP_API_BASE during build = $REACT_APP_API_BASE"
           npm ci
           npm run build
-          ls -la build/
 
       - name: Package Backend (self-contained with node_modules)
         working-directory: ./backend
         run: |
           npm ci --omit=dev
-          # Create zip that includes node_modules (required for self-contained EC2 runtime)
           rm -f ../backend.zip
           zip -r ../backend.zip . || (echo "zip retry" && zip -r ../backend.zip .)
 
@@ -98,7 +92,6 @@ jobs:
           path: backend.zip
           retention-days: 7
 
-  # ===================== 2. TEST + TERRAFORM PLAN (visibility only) =====================
   test-plan:
     name: 2. Test & Terraform Plan
     needs: build
@@ -116,7 +109,7 @@ jobs:
         with:
           terraform_version: "~> 1.10"
 
-      - name: Terraform Init (Remote Backend with lockfile)
+      - name: Terraform Init
         working-directory: ./terraform
         run: |
           terraform init \
@@ -131,7 +124,7 @@ jobs:
         working-directory: ./terraform
         run: terraform validate
 
-      - name: Terraform Plan (for logs / audit)
+      - name: Terraform Plan
         working-directory: ./terraform
         run: |
           terraform plan \
@@ -141,7 +134,6 @@ jobs:
             -var="environment=${{ github.event.inputs.environment }}" \
             -out=tfplan || true
 
-  # ===================== 3a. DEPLOY TO DEVELOPMENT =====================
   deploy-dev:
     name: 3a. Deploy to Development
     needs: [build, test-plan]
@@ -160,7 +152,7 @@ jobs:
         with:
           terraform_version: "~> 1.10"
 
-      - name: Terraform Init (Development state)
+      - name: Terraform Init (Development)
         working-directory: ./terraform
         run: |
           terraform init \
@@ -171,7 +163,7 @@ jobs:
             -backend-config="encrypt=true" \
             -reconfigure
 
-      - name: Terraform Apply - Development (publishes new Launch Template if user-data changed)
+      - name: Terraform Apply - Development
         working-directory: ./terraform
         run: |
           terraform apply \
@@ -187,47 +179,30 @@ jobs:
           name: react-build
           path: frontend-dist
 
-      - name: Deploy React Frontend to S3 (current/)
+      - name: Deploy React to S3
         run: |
           aws s3 sync ./frontend-dist s3://${{ env.FRONTEND_BUCKET }}/frontend/current/ --delete
 
-      - name: Deploy Backend zip to S3 (for future use)
-        run: |
-          aws s3 cp backend.zip s3://${{ env.FRONTEND_BUCKET }}/backend/backend.zip || true
-
-      - name: Trigger ASG Instance Refresh (zero-downtime rollout of new code + user-data)
+      - name: Trigger ASG Instance Refresh
         run: |
           ASG_NAME="ha-project-asg"
-
-          # Cancel any stuck previous refresh
           IN_PROGRESS=$(aws autoscaling describe-instance-refreshes \
             --auto-scaling-group-name $ASG_NAME \
             --query "InstanceRefreshes[?Status=='InProgress'].InstanceRefreshId" \
             --output text 2>/dev/null || true)
-
           if [ -n "$IN_PROGRESS" ] && [ "$IN_PROGRESS" != "None" ]; then
-            echo "Cancelling in-progress refresh: $IN_PROGRESS"
-            aws autoscaling cancel-instance-refresh \
-              --auto-scaling-group-name $ASG_NAME \
-              --instance-refresh-id $IN_PROGRESS || true
+            aws autoscaling cancel-instance-refresh --auto-scaling-group-name $ASG_NAME --instance-refresh-id $IN_PROGRESS || true
             sleep 20
           fi
-
-          echo "Starting fresh rolling refresh (MinHealthy=0 for speed in dev)..."
           aws autoscaling start-instance-refresh \
             --auto-scaling-group-name $ASG_NAME \
             --strategy Rolling \
             --preferences MinHealthyPercentage=0,InstanceWarmup=90 \
-            --region ${{ env.AWS_REGION }} || echo "Refresh command completed (may still be running)"
+            --region ${{ env.AWS_REGION }} || echo "Refresh started"
 
-      - name: Demo Notes
-        run: |
-          echo "✅ Development deployment initiated."
-          echo "Open your ALB DNS in the browser."
-          echo "Wait 3-6 minutes for ASG to launch fresh instances + S3 sync + health checks."
-          echo "The React To-Do UI should appear (even if tasks 404 or say 'cannot reach backend')."
+      - name: Demo note
+        run: echo "✅ Dev deploy done. Wait 3-6 min then open your ALB DNS in browser."
 
-  # ===================== 3b. DEPLOY TO STAGING =====================
   deploy-staging:
     name: 3b. Deploy to Staging
     needs: [build, test-plan]
@@ -235,54 +210,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Configure AWS via OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ env.OIDC_ROLE }}
           aws-region: ${{ env.AWS_REGION }}
-
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "~> 1.10"
-
-      - name: Terraform Init (Staging state)
+      - name: Terraform Init (Staging)
         working-directory: ./terraform
         run: |
-          terraform init \
-            -backend-config="bucket=${{ env.TF_STATE_BUCKET }}" \
-            -backend-config="key=ha-project/staging/terraform.tfstate" \
-            -backend-config="region=${{ env.AWS_REGION }}" \
-            -backend-config="use_lockfile=true" \
-            -backend-config="encrypt=true" \
-            -reconfigure
-
+          terraform init -backend-config="bucket=${{ env.TF_STATE_BUCKET }}" -backend-config="key=ha-project/staging/terraform.tfstate" -backend-config="region=${{ env.AWS_REGION }}" -backend-config="use_lockfile=true" -backend-config="encrypt=true" -reconfigure
       - name: Terraform Apply - Staging
         working-directory: ./terraform
         run: |
-          terraform apply \
-            -refresh=false \
-            -lock=false \
-            -var="db_password=${{ secrets.DB_PASSWORD }}" \
-            -var="environment=staging" \
-            -auto-approve
+          terraform apply -refresh=false -lock=false -var="db_password=${{ secrets.DB_PASSWORD }}" -var="environment=staging" -auto-approve
 
-      - name: Download React Build
-        uses: actions/download-artifact@v4
-        with:
-          name: react-build
-          path: frontend-dist
-
-      - name: Deploy React to Staging S3 prefix
-        run: |
-          aws s3 sync ./frontend-dist s3://${{ env.FRONTEND_BUCKET }}/frontend/staging/ --delete || true
-
-      - name: Demo Notes
-        run: |
-          echo "✅ Staging deployment initiated."
-          echo "Check your staging ALB / CloudFront / S3 prefix when you extend the infra."
-
-  # ===================== 3c. PRODUCTION (with manual approval gate) =====================
   approve-prod:
     name: 3c. Approve Production Deployment
     needs: [build, test-plan]
@@ -290,12 +234,9 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: production
-      # Update this URL later to your real production ALB DNS
       url: https://github.com
     steps:
-      - run: |
-          echo "✅ Manual approval received for Production deployment."
-          echo "This job only succeeds after a required reviewer approves in GitHub."
+      - run: echo "✅ Manual approval received for Production"
 
   deploy-prod:
     name: 3d. Deploy to Production
@@ -304,65 +245,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Configure AWS via OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ env.OIDC_ROLE }}
           aws-region: ${{ env.AWS_REGION }}
-
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "~> 1.10"
-
-      - name: Terraform Init (Production state)
+      - name: Terraform Init (Production)
         working-directory: ./terraform
         run: |
-          terraform init \
-            -backend-config="bucket=${{ env.TF_STATE_BUCKET }}" \
-            -backend-config="key=ha-project/production/terraform.tfstate" \
-            -backend-config="region=${{ env.AWS_REGION }}" \
-            -backend-config="use_lockfile=true" \
-            -backend-config="encrypt=true" \
-            -reconfigure
-
-      - name: Terraform Apply - Production (cautious)
+          terraform init -backend-config="bucket=${{ env.TF_STATE_BUCKET }}" -backend-config="key=ha-project/production/terraform.tfstate" -backend-config="region=${{ env.AWS_REGION }}" -backend-config="use_lockfile=true" -backend-config="encrypt=true" -reconfigure
+      - name: Terraform Apply - Production
         working-directory: ./terraform
         run: |
-          terraform apply \
-            -refresh=false \
-            -lock=false \
-            -var="db_password=${{ secrets.DB_PASSWORD }}" \
-            -var="environment=production" \
-            -auto-approve
-
-      - name: Download React Build
-        uses: actions/download-artifact@v4
-        with:
-          name: react-build
-          path: frontend-dist
-
-      - name: Deploy React to Production S3 prefix
-        run: |
-          aws s3 sync ./frontend-dist s3://${{ env.FRONTEND_BUCKET }}/frontend/production/ --delete || true
-          aws s3 cp backend.zip s3://${{ env.FRONTEND_BUCKET }}/backend/backend-prod.zip || true
-
-      - name: Demo Notes
-        run: |
-          echo "✅ Production deployment completed (after manual gate)."
-          echo "This completes the full dev → staging → prod promotion story."
-
-# =============================================================================
-# HOW TO DEMO THIS IN YOUR PRESENTATION
-# =============================================================================
-# 1. Show the Actions tab and the big "Run workflow" button + dropdown.
-# 2. Run "development" → watch it go green → open ALB → show the To-Do UI.
-# 3. (Optional) Run "staging".
-# 4. Run "production" → it will pause at the approval job.
-# 5. In a second tab go to Settings → Environments → production → show the
-#    required reviewer(s) and click "Approve" or "Reject".
-# 6. The deploy-prod job then runs.
-#
-# This gives you a professional, repeatable, auditable promotion pipeline
-# with a real manual gate — exactly what enterprise CI/CD looks like.
-# =============================================================================
+          terraform apply -refresh=false -lock=false -var="db_password=${{ secrets.DB_PASSWORD }}" -var="environment=production" -auto-approve
