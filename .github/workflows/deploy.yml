@@ -1,43 +1,40 @@
-name: CI/CD Pipeline - HA To-Do App (Demo Ready)
+name: CI/CD - HA To-Do App Demo Pipeline
 
 # =============================================================================
-# PRESENTATION-FRIENDLY PIPELINE
+# CLEAN DEMO PIPELINE FOR PRESENTATION
 # =============================================================================
-# This workflow is designed for a clean demo:
 #
-# 1. Push to `development` branch
-#    → Automatically builds + deploys to **Development** environment
+# HOW IT WORKS:
 #
-# 2. Manually trigger workflow → choose "staging"
-#    → Deploys to **Staging** environment
+# 1. You push code to the `development` branch
+#    → The pipeline automatically runs:
+#       Build → Deploy to Development → Deploy to Staging
+#    → Then it STOPS at the Manual Approval Gate for Production
 #
-# 3. Manually trigger workflow → choose "production"
-#    → Hits **Manual Approval Gate** (GitHub Environment)
-#    → Then deploys to **Production**
+# 2. In the GitHub UI you will see a prompt:
+#    "Review deployments" for the production environment
+#    → You click Approve (or Reject)
 #
-# This gives you a professional promotion story:
-# Development (auto) → Staging (manual) → Production (with approval gate)
+# 3. After you approve → it deploys to Production
 #
-# IMPORTANT FOR DEMO:
-# - Make sure your repo has a GitHub Environment called "production"
-#   with at least one Required Reviewer (you can add yourself).
-# - Go to Settings → Environments → production → Add required reviewers.
+# BRANCHES:
+# - You ONLY need to push to the `development` branch.
+# - You do NOT need to push to different branches for this demo.
+# - Everything (Dev + Staging + waiting for Prod approval) happens from one push to `development`.
+#
+# This is the cleanest story for your instructor:
+# "Code is pushed → automatically goes through Dev and Staging → requires manual approval before Production"
+#
+# SETUP BEFORE DEMO (do this once):
+# - Go to your repo → Settings → Environments
+# - Create an environment named exactly: "production"
+# - Add at least one Required Reviewer (you can add yourself)
 # =============================================================================
 
 on:
   push:
     branches:
       - development
-  workflow_dispatch:
-    inputs:
-      target:
-        description: 'Deploy target (for manual promotion)'
-        required: true
-        default: 'staging'
-        type: choice
-        options:
-          - staging
-          - production
 
 permissions:
   id-token: write
@@ -50,9 +47,9 @@ env:
   OIDC_ROLE: arn:aws:iam::866934333672:role/GitHubActionsDeployRole-HAProjectV2
 
 jobs:
-  # ===================== BUILD =====================
+  # ===================== 1. BUILD =====================
   build:
-    name: Build React Frontend
+    name: 1. Build React Frontend
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -71,18 +68,18 @@ jobs:
           npm ci
           npm run build
 
-      - name: Upload React Build
+      - name: Upload React Build Artifact
         uses: actions/upload-artifact@v4
         with:
           name: react-build
           path: app/build
           retention-days: 7
 
-  # ===================== DEPLOY TO DEVELOPMENT (Automatic) =====================
+  # ===================== 2. DEPLOY TO DEVELOPMENT =====================
   deploy-dev:
-    name: Deploy to Development
+    name: 2. Deploy to Development
     needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/development'
+    if: github.ref == 'refs/heads/development'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -97,7 +94,7 @@ jobs:
         with:
           terraform_version: "~> 1.10"
 
-      - name: Terraform Apply (Development)
+      - name: Terraform Apply - Development
         working-directory: ./terraform
         run: |
           terraform init \
@@ -115,7 +112,7 @@ jobs:
             -var="environment=development" \
             -auto-approve || true
 
-      - name: Download & Deploy React to S3 (Dev)
+      - name: Deploy React Frontend to Dev
         uses: actions/download-artifact@v4
         with:
           name: react-build
@@ -125,7 +122,7 @@ jobs:
         run: |
           aws s3 sync ./frontend-dist s3://${{ env.FRONTEND_BUCKET }}/frontend/current/ --delete
 
-      - name: Trigger ASG Refresh
+      - name: Trigger ASG Refresh (Dev)
         run: |
           aws autoscaling start-instance-refresh \
             --auto-scaling-group-name ha-project-asg \
@@ -133,14 +130,11 @@ jobs:
             --preferences MinHealthyPercentage=0,InstanceWarmup=60 \
             --region ${{ env.AWS_REGION }} || true
 
-      - name: Demo Note
-        run: echo "✅ Deployed to Development. Open your ALB to see the site."
-
-  # ===================== DEPLOY TO STAGING (Manual) =====================
+  # ===================== 3. DEPLOY TO STAGING =====================
   deploy-staging:
-    name: Deploy to Staging
-    needs: build
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'staging'
+    name: 3. Deploy to Staging
+    needs: deploy-dev
+    if: github.ref == 'refs/heads/development'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -155,7 +149,7 @@ jobs:
         with:
           terraform_version: "~> 1.10"
 
-      - name: Terraform Apply (Staging)
+      - name: Terraform Apply - Staging
         working-directory: ./terraform
         run: |
           terraform init \
@@ -173,7 +167,7 @@ jobs:
             -var="environment=staging" \
             -auto-approve || true
 
-      - name: Download & Deploy React to S3 (Staging)
+      - name: Deploy React Frontend to Staging
         uses: actions/download-artifact@v4
         with:
           name: react-build
@@ -184,25 +178,25 @@ jobs:
           aws s3 sync ./frontend-dist s3://${{ env.FRONTEND_BUCKET }}/frontend/staging/ --delete || true
 
       - name: Demo Note
-        run: |
-          echo "✅ Deployed to Staging."
-          echo "This completes the Development → Staging promotion step."
+        run: echo "✅ Staging deployment complete. Pipeline now waiting at Production approval gate."
 
-  # ===================== PRODUCTION WITH MANUAL APPROVAL =====================
+  # ===================== 4. MANUAL APPROVAL GATE FOR PRODUCTION =====================
   production-approval:
-    name: Manual Approval Required
-    needs: build
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.target == 'production'
+    name: 4. Manual Approval Required for Production
+    needs: deploy-staging
+    if: github.ref == 'refs/heads/development'
     runs-on: ubuntu-latest
     environment:
-      name: production          # ← This creates the manual approval gate
-      url: https://github.com   # Update this to your real prod URL later
+      name: production
+      url: https://github.com
     steps:
-      - run: echo "✅ Manual approval granted. Proceeding to Production deployment."
+      - run: echo "✅ Approval received. Proceeding to Production deployment."
 
-  deploy-production:
-    name: Deploy to Production
+  # ===================== 5. DEPLOY TO PRODUCTION =====================
+  deploy-prod:
+    name: 5. Deploy to Production
     needs: production-approval
+    if: github.ref == 'refs/heads/development'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -217,7 +211,7 @@ jobs:
         with:
           terraform_version: "~> 1.10"
 
-      - name: Terraform Apply (Production)
+      - name: Terraform Apply - Production
         working-directory: ./terraform
         run: |
           terraform init \
@@ -235,7 +229,7 @@ jobs:
             -var="environment=production" \
             -auto-approve || true
 
-      - name: Download & Deploy React to S3 (Production)
+      - name: Deploy React Frontend to Production
         uses: actions/download-artifact@v4
         with:
           name: react-build
@@ -247,5 +241,5 @@ jobs:
 
       - name: Demo Note
         run: |
-          echo "✅ Deployed to Production after manual approval gate."
-          echo "This completes the full promotion flow: Dev → Staging → Production (with approval)."
+          echo "✅ Production deployment complete after manual approval."
+          echo "Full flow demonstrated: Dev (auto) → Staging (auto) → Production (manual approval gate)"
