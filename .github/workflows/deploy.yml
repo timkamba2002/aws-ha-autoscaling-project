@@ -3,17 +3,16 @@ name: CI/CD - HA 3-Tier To-Do App (React + Node + MySQL)
 # =============================================================================
 # HYBRID TRIGGER (AUTO ON PUSH + MANUAL BUTTONS)
 # =============================================================================
-# This now does BOTH:
+# This file supports BOTH:
 #
-# 1. AUTOMATIC (what you're used to):
-#    → Every time you push to the "development" branch, the workflow runs by itself.
+# 1. AUTOMATIC (what you are used to):
+#    - Push to development branch → workflow runs by itself automatically.
 #
-# 2. MANUAL (for demo):
-#    → After the first successful push, you will also see a "Run workflow" button
-#      with a dropdown (development / staging / production) in the Actions tab.
+# 2. MANUAL (for your presentation):
+#    - After a successful run, you will see a "Run workflow" button
+#      with dropdown (development / staging / production) in the Actions UI.
 #
-# If you still don't see the button after this push, tell me what the branch
-# dropdown says at the top of the Actions page.
+# The button appears in the Actions tab after you select this workflow name.
 # =============================================================================
 
 on:
@@ -77,12 +76,14 @@ jobs:
         with:
           name: react-build
           path: app/build
+          retention-days: 7
 
       - name: Upload Backend Zip
         uses: actions/upload-artifact@v4
         with:
           name: backend-zip
           path: backend.zip
+          retention-days: 7
 
   test-plan:
     name: 2. Test & Terraform Plan
@@ -174,12 +175,22 @@ jobs:
         run: |
           aws s3 sync ./frontend-dist s3://${{ env.FRONTEND_BUCKET }}/frontend/current/ --delete
 
-      - name: Trigger ASG Refresh
+      - name: Trigger ASG Instance Refresh
         run: |
+          ASG_NAME="ha-project-asg"
+          IN_PROGRESS=$(aws autoscaling describe-instance-refreshes \
+            --auto-scaling-group-name $ASG_NAME \
+            --query "InstanceRefreshes[?Status=='InProgress'].InstanceRefreshId" \
+            --output text 2>/dev/null || true)
+          if [ -n "$IN_PROGRESS" ] && [ "$IN_PROGRESS" != "None" ]; then
+            aws autoscaling cancel-instance-refresh --auto-scaling-group-name $ASG_NAME --instance-refresh-id $IN_PROGRESS || true
+            sleep 15
+          fi
           aws autoscaling start-instance-refresh \
-            --auto-scaling-group-name ha-project-asg \
+            --auto-scaling-group-name $ASG_NAME \
             --strategy Rolling \
             --preferences MinHealthyPercentage=0,InstanceWarmup=60 \
             --region ${{ env.AWS_REGION }} || true
 
-            # jdfs
+      - name: Note
+        run: echo "✅ Dev deploy finished. Wait 3-6 minutes then open ALB."
