@@ -4,10 +4,10 @@ set -euo pipefail
 LOG_FILE="/var/log/user-data.log"
 exec > >(tee -a $LOG_FILE) 2>&1
 
-echo "=== HA Project Frontend Bootstrap Started - $(date) ==="
+echo "=== HA Project Frontend Recovery Bootstrap - $(date) ==="
 
 # ============================================================
-# ULTRA-EARLY PLACEHOLDER + HEALTH (keeps ALB happy during refresh)
+# 1. IMMEDIATE PLACEHOLDER + HEALTH (ALB must see something fast)
 # ============================================================
 mkdir -p /var/www/html
 
@@ -19,16 +19,13 @@ cat > /var/www/html/index.html << 'HTMLEOF'
   <title>To-Do App • Updating</title>
   <style>
     body { font-family: system-ui; background:#0f172a; color:#e2e8f0; display:flex; align-items:center; justify-content:center; min-height:100vh; margin:0; }
-    .card { background:#1e293b; padding:2.5rem 3rem; border-radius:12px; text-align:center; max-width:420px; }
-    .spinner { width:28px; height:28px; border:3px solid #334155; border-top-color:#60a5fa; border-radius:50%; animation:spin 0.9s linear infinite; margin:0 auto 1rem; }
-    @keyframes spin { to { transform:rotate(360deg); } }
+    .card { background:#1e293b; padding:2rem 3rem; border-radius:12px; text-align:center; }
   </style>
 </head>
 <body>
   <div class="card">
-    <div class="spinner"></div>
     <h1>🚀 Updating To-Do App</h1>
-    <p>New version is rolling out. Please wait...</p>
+    <p>Please wait while the new version starts...</p>
   </div>
 </body>
 </html>
@@ -37,24 +34,32 @@ HTMLEOF
 echo "OK $(date -Iseconds)" > /var/www/html/health
 
 # ============================================================
-# INSTALL ONLY WHAT WE NEED FOR FRONTEND
+# 2. CLEAN UP ANY CONFLICTING SERVICES
+# ============================================================
+systemctl stop httpd 2>/dev/null || true
+systemctl disable httpd 2>/dev/null || true
+pkill -9 httpd 2>/dev/null || true
+
+# ============================================================
+# 3. INSTALL MINIMAL PACKAGES
 # ============================================================
 yum update -y || true
 yum install -y nginx awscli unzip || true
 
-# Stop any httpd that might be running and holding port 80
-systemctl stop httpd 2>/dev/null || true
-systemctl disable httpd 2>/dev/null || true
-
 # ============================================================
-# DEPLOY REACT FRONTEND FROM S3
+# 4. DEPLOY REACT FROM S3 (MOST IMPORTANT PART)
 # ============================================================
 FRONTEND_BUCKET="${frontend_bucket}"
-echo "Fetching React build from s3://$FRONTEND_BUCKET/frontend/current/"
+echo "Downloading React build from s3://$FRONTEND_BUCKET/frontend/current/"
 
 mkdir -p /var/www/html
-aws s3 sync "s3://$FRONTEND_BUCKET/frontend/current/" /var/www/html/ --delete 2>/dev/null || true
+if aws s3 sync "s3://$FRONTEND_BUCKET/frontend/current/" /var/www/html/ --delete 2>/dev/null; then
+  echo "✅ Frontend synced successfully"
+else
+  echo "⚠️ S3 sync had issues - keeping placeholder"
+fi
 
+# Fix permissions
 chown -R nginx:nginx /var/www/html 2>/dev/null || chown -R ec2-user:ec2-user /var/www/html 2>/dev/null || true
 find /var/www/html -type d -exec chmod 755 {} + 2>/dev/null || true
 find /var/www/html -type f -exec chmod 644 {} + 2>/dev/null || true
@@ -62,11 +67,11 @@ find /var/www/html -type f -exec chmod 644 {} + 2>/dev/null || true
 echo "OK $(date -Iseconds)" > /var/www/html/health
 
 # ============================================================
-# SIMPLE NGINX CONFIG - JUST SERVE THE REACT APP
+# 5. SIMPLE NGINX CONFIG
 # ============================================================
-cat > /etc/nginx/conf.d/ha-frontend.conf << 'NGINXEOF'
+cat > /etc/nginx/conf.d/ha-app.conf << 'NGINXEOF'
 server {
-    listen 80;
+    listen 80 default_server;
     server_name _;
 
     root /var/www/html;
@@ -86,13 +91,25 @@ NGINXEOF
 
 rm -f /etc/nginx/conf.d/default.conf 2>/dev/null || true
 
-systemctl enable nginx || true
-systemctl restart nginx || true
+# Test config and start/restart nginx
+if nginx -t 2>/dev/null; then
+  systemctl enable nginx || true
+  systemctl restart nginx || true
+  echo "✅ Nginx started successfully"
+else
+  echo "❌ Nginx config test failed"
+  # Last resort - try to start anyway
+  systemctl restart nginx 2>/dev/null || true
+fi
 
-echo "Nginx started for frontend"
-
-# Final health check
 echo "OK $(date -Iseconds)" > /var/www/html/health
 
-echo "=== Frontend Bootstrap Complete - $(date) ==="
-echo "Site should be live on port 80"
+# ============================================================
+# 6. FINAL VERIFICATION
+# ============================================================
+echo "=== Bootstrap finished at $(date) ==="
+echo "Nginx status: $(systemctl is-active nginx 2>/dev/null || echo 'unknown')"
+echo "Health file: $(cat /var/www/html/health 2>/dev/null || echo 'missing')"
+
+# Write health one last time
+echo "OK $(date -Iseconds)" > /var/www/html/health
