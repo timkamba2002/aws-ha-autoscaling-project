@@ -186,10 +186,27 @@ jobs:
 
       - name: Trigger ASG Refresh (pick up new code)
         run: |
+          ASG_NAME="ha-project-asg"
+
+          # Cancel any refresh that is still running (common when deploying frequently to dev)
+          IN_PROGRESS=$(aws autoscaling describe-instance-refreshes \
+            --auto-scaling-group-name $ASG_NAME \
+            --query "InstanceRefreshes[?Status=='InProgress'].InstanceRefreshId" \
+            --output text || true)
+
+          if [ -n "$IN_PROGRESS" ]; then
+            echo "Cancelling existing refresh: $IN_PROGRESS"
+            aws autoscaling cancel-instance-refresh \
+              --auto-scaling-group-name $ASG_NAME \
+              --instance-refresh-id $IN_PROGRESS || true
+            sleep 15
+          fi
+
+          echo "Starting fresh instance refresh..."
           aws autoscaling start-instance-refresh \
-            --auto-scaling-group-name ha-project-asg \
+            --auto-scaling-group-name $ASG_NAME \
             --strategy Rolling \
-            --preferences MinHealthyPercentage=50,InstanceWarmup=180 \
+            --preferences MinHealthyPercentage=0,InstanceWarmup=60 \
             --region ${{ env.AWS_REGION }} || echo "Refresh skipped"
 
   # ===================== DEPLOY TO STAGING (AUTO after dev) =====================
