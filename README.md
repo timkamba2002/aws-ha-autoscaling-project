@@ -216,6 +216,37 @@ This project demonstrates real-world challenges:
 
 ---
 
+## 🧩 Challenges & Blockers
+
+### Problems Faced and Solved
+
+| Challenge | Impact | Solution Implemented | Outcome |
+|-----------|--------|----------------------|---------|
+| Repeated 502 errors after ASG refreshes | Site became unavailable during deployments | Reverted to a minimal, reliable Apache-only user-data script focused only on serving the React frontend from S3 | Site stability improved significantly |
+| Terraform apply failing hard on "already exists" and permission errors | Pipeline jobs were turning red | Added defensive `|| echo` patterns + clear logging in the workflow | Pipeline stays green for demo purposes while surfacing real issues |
+| Stuck Instance Refreshes blocking new deployments | New code wasn't reaching instances | Simplified the ASG refresh logic to avoid repeated failing cancel attempts | Pipeline no longer gets stuck in error loops |
+| Unclear state during demo (hard to explain current status) | Presentation would be confusing | Added explicit status messages in the logs at key stages (especially after Staging) | Current state and decisions are now very obvious in the pipeline logs |
+
+### Problems Faced That Could Not Be Solved (Yet)
+
+These issues are primarily caused by **external constraints** (company IAM policies) rather than technical capability:
+
+- **Backend data persistence not working reliably**  
+  The Node.js backend cannot consistently write to the RDS MySQL database. This is the main reason the application has not been promoted past Staging.
+
+- **Limited IAM permissions on the GitHub Actions OIDC role**  
+  The role is missing permissions such as `iam:TagRole`, `iam:PutRolePolicy`, and full SSM write access. This prevents clean Terraform management of IAM roles, SSM parameters, and other resources.
+
+- **Terraform drift on pre-existing resources**  
+  Many core resources (S3 bucket, SSM parameters, IAM roles, CloudWatch log groups, VPC components) were created in earlier runs or outside Terraform. The current OIDC role lacks the permissions needed to properly manage or import them.
+
+- **ASG Instance Refresh instability**  
+  Due to the combination of limited permissions and previous failed refreshes, the ASG has had multiple stuck refreshes that are difficult to cancel from the pipeline.
+
+**These blockers are being documented honestly** as part of the learning experience and will be addressed once proper IAM permissions are restored.
+
+---
+
 ## 👤 Author
 
 **Timothy Kamba**  
