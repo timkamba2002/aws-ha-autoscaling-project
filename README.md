@@ -169,7 +169,14 @@ The current pipeline is already quite mature for a learning project. Planned imp
 - **Reusable Workflows**: Extract common steps (Terraform init/apply, ECR login, etc.) into reusable workflows for better maintainability.
 - **Manual Promotion Workflows**: Create dedicated "Promote to Staging" and "Promote to Production" workflows (triggered manually) for clearer audit trails and demos.
 
-### 30-Day Focus (June 2026)
+### Recommended Approach After Presentation
+
+**Phase 1 – Stabilize the Application (Highest Priority)**
+- Get the backend reliably writing to the database.
+- Add proper integration tests that validate end-to-end data flow (task creation, retrieval, updates).
+- Only once the core application works reliably should we move to major infrastructure changes.
+
+**Phase 2 – 30-Day Modernization Sprint (After Backend is Stable)**
 
 | Priority | Initiative | Description | Skills Gained | Status |
 |----------|------------|-------------|---------------|--------|
