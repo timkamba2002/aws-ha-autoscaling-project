@@ -154,6 +154,57 @@ aws-ha-autoscaling-project/
 
 ---
 
+## 🚀 Future Plans & Roadmap
+
+This project is intentionally being used as a **hands-on learning platform** to build real DevOps and Cloud Engineering skills while preparing for the AWS Solutions Architect Associate certification.
+
+### CI/CD Pipeline Evolution
+
+The current pipeline is already quite mature for a learning project. Planned improvements include:
+
+- **Container-Native Deployments**: Once the backend is moved to ECS Fargate, the pipeline will build Docker images, push them to ECR, and deploy via ECS instead of syncing static files to S3.
+- **Artifact Promotion Model**: Build and test once → promote the exact same container image through Dev → Staging → Production (instead of rebuilding).
+- **Security Scanning**: Add Trivy (or similar) container vulnerability scanning in the pipeline before promotion.
+- **GitHub Environments for all stages**: Apply deployment protection rules to Staging in addition to Production.
+- **Reusable Workflows**: Extract common steps (Terraform init/apply, ECR login, etc.) into reusable workflows for better maintainability.
+- **Manual Promotion Workflows**: Create dedicated "Promote to Staging" and "Promote to Production" workflows (triggered manually) for clearer audit trails and demos.
+
+### 30-Day Focus (June 2026)
+
+| Priority | Initiative | Description | Skills Gained | Status |
+|----------|------------|-------------|---------------|--------|
+| **1** | **Containerization** | Dockerize the Node.js backend and push images to Amazon ECR | Docker, ECR, Immutable deployments | Planned |
+| **2** | **ECS Fargate Migration** | Move backend from EC2 to ECS Fargate (serverless containers) | ECS, Fargate, Task Definitions, Service discovery | Planned |
+| **3** | **Secrets Management** | Migrate from SSM Parameter Store to AWS Secrets Manager | Secrets Manager, IAM least privilege | Planned |
+| **4** | **Observability** | Add CloudWatch Alarms, dashboards, and SNS notifications for failures | CloudWatch, Monitoring, Alerting | Planned |
+| **5** | **Terraform Maturity** | Refactor into reusable modules + introduce Terraform workspaces | Advanced IaC, state management | Planned |
+
+### Medium-Term Enhancements (Next 2–3 Months)
+
+- Introduce **Ansible** for configuration management on any remaining EC2 instances
+- Add **WAF** and **CloudFront** in front of the Application Load Balancer
+- Implement **Policy as Code** (Checkov / tfsec) in the CI pipeline
+- Add container vulnerability scanning (Trivy) before deployment
+- Improve integration testing in the Test stage
+
+### Long-Term Vision
+
+- Migrate to **EKS** (if deeper Kubernetes experience is needed)
+- Adopt **GitOps** with ArgoCD
+- Multi-region high availability and disaster recovery patterns
+- Full FinOps practices (cost tagging, budgets, and optimization)
+- Service Mesh (Istio) on EKS for advanced traffic management
+
+### Why These Specific Additions?
+
+These items were chosen because they:
+- Directly address current technical debt (backend reliability)
+- Provide strong, modern experience that is highly valued in the job market
+- Map closely to the AWS Solutions Architect Associate exam domains
+- Demonstrate progression from "I can deploy infrastructure" to "I can build production-grade platforms"
+
+---
+
 ## 📌 Lessons & Reflection
 
 This project demonstrates real-world challenges:

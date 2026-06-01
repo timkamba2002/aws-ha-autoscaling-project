@@ -95,6 +95,11 @@ jobs:
           path: app/build
           retention-days: 7
 
+      # TODO (June 2026): When backend moves to ECS Fargate, this job will also:
+      # - Build Docker image for the backend
+      # - Tag and push image to Amazon ECR
+      # - Upload image digest as an artifact for promotion through environments
+
   # ===================== 2. TEST (NEW) =====================
   test:
     name: 2. Test
@@ -249,6 +254,11 @@ jobs:
           echo "This is exactly why the manual approval gate exists."
           echo "=================================================="
 
+      # FUTURE (Post-ECS Migration):
+      # - This job will pull the container image digest from the Build stage
+      # - Deploy the exact same image tag to ECS in the staging environment
+      # - This enforces true artifact promotion (build once, promote everywhere)
+
   # ===================== 5. MANUAL APPROVAL GATE =====================
   production-approval:
     name: 5. Manual Approval Required
@@ -273,6 +283,11 @@ jobs:
           echo "In this case, we would likely REJECT the promotion"
           echo "because the backend is not yet persisting data."
           echo "=================================================="
+
+      # FUTURE STATE (After ECS Fargate migration):
+      # The production environment will have strict deployment protection rules
+      # and will only allow promotion of container images that have passed
+      # security scanning and testing in lower environments.
 
   # ===================== 6. DEPLOY TO PRODUCTION =====================
   deploy-prod:
