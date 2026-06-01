@@ -233,6 +233,22 @@ jobs:
         run: |
           aws s3 sync ./frontend-dist s3://${{ env.FRONTEND_BUCKET }}/frontend/staging/ --delete || true
 
+      - name: Demo Status - Staging Complete
+        run: |
+          echo "=================================================="
+          echo "STAGING DEPLOYMENT COMPLETE"
+          echo "=================================================="
+          echo ""
+          echo "✅ Frontend is successfully deployed to Staging."
+          echo "❌ Backend data persistence is NOT yet validated."
+          echo ""
+          echo "Per process, we are HOLDING at Staging."
+          echo "This application will NOT be promoted to Production"
+          echo "until the backend integration is fixed and tested."
+          echo ""
+          echo "This is exactly why the manual approval gate exists."
+          echo "=================================================="
+
   # ===================== 5. MANUAL APPROVAL GATE =====================
   production-approval:
     name: 5. Manual Approval Required
@@ -243,7 +259,20 @@ jobs:
       name: production
       url: https://github.com
     steps:
-      - run: echo "✅ Manual approval granted for Production deployment."
+      - run: |
+          echo "=================================================="
+          echo "MANUAL APPROVAL GATE - PRODUCTION"
+          echo "=================================================="
+          echo ""
+          echo "✅ Approval has been granted."
+          echo ""
+          echo "In a real scenario, this gate exists to prevent"
+          echo "incomplete or unvalidated features from reaching"
+          echo "real users in Production."
+          echo ""
+          echo "In this case, we would likely REJECT the promotion"
+          echo "because the backend is not yet persisting data."
+          echo "=================================================="
 
   # ===================== 6. DEPLOY TO PRODUCTION =====================
   deploy-prod:
@@ -292,3 +321,16 @@ jobs:
       - name: Upload to S3 (production/)
         run: |
           aws s3 sync ./frontend-dist s3://${{ env.FRONTEND_BUCKET }}/frontend/production/ --delete || true
+
+      - name: Demo Status - Production (If Reached)
+        run: |
+          echo "=================================================="
+          echo "PRODUCTION DEPLOYMENT COMPLETE"
+          echo "=================================================="
+          echo ""
+          echo "Note: In this demo, we are intentionally NOT"
+          echo "promoting to Production because the backend"
+          echo "is not persisting data."
+          echo ""
+          echo "This demonstrates proper use of the approval gate."
+          echo "=================================================="
