@@ -2,7 +2,10 @@
 
 A Cloud/DevOps learning project demonstrating a production-style CI/CD pipeline with infrastructure as code, auto-scaling, and manual promotion gates.
 
-**Current Status:** Frontend is deployed and working in Staging. Backend integration is incomplete due to external IAM restrictions (see below).
+**Current Status (June 2026):**  
+The full stack is now working end-to-end in the development environment. React frontend loads through the ALB, Node.js backend is running on both instances, and tasks created in the UI are successfully persisted to RDS MySQL.
+
+See [DEV_HISTORY.md](./DEV_HISTORY.md) for the complete, honest record of challenges, fixes, and lessons learned.
 
 ---
 
@@ -81,19 +84,15 @@ Push to `development`
 
 ## 📊 Current Project Status (Honest Assessment)
 
-| Area              | Status                          | Notes |
-|-------------------|----------------------------------|-------|
-| **Frontend**      | ✅ Working in Staging           | React app loads correctly |
-| **Backend**       | ⚠️ Partially working            | API calls fail to persist data |
-| **CI/CD Flow**    | ✅ Fully functional             | Clean Dev → Staging → Approval Gate → Prod |
-| **Infrastructure**| ⚠️ Some drift & limitations     | Limited by IAM permissions |
-| **Production**    | ⛔ Not promoted                 | Correctly held at approval gate |
+| Area                  | Status                  | Notes |
+|-----------------------|-------------------------|-------|
+| **Frontend**          | ✅ Working             | React app loads through ALB |
+| **Backend + Database**| ✅ Working             | Tasks created in UI are saved to RDS MySQL and visible after refresh |
+| **CI/CD Flow**        | ⚠️ Basic but improving | Works for dev. Needs proper branch promotion + auto-PR flow |
+| **Infrastructure**    | ⚠️ Still maturing      | User-data significantly improved. Terraform environment isolation still weak |
+| **Production**        | ⛔ Not promoted        | Intentionally held back until everything is stable |
 
-### Why the Backend Isn't Fully Working
-
-The backend cannot reliably persist data to RDS due to ongoing IAM permission restrictions on the GitHub Actions OIDC role and previous Terraform state drift. These are external blockers outside the scope of the current sprint.
-
-**This is a deliberate teaching moment** for the presentation.
+**See [DEV_HISTORY.md](./DEV_HISTORY.md)** for the full story of how we got here (many failed attempts, IAM battles, user-data rewrites, and hard lessons).
 
 ---
 
@@ -145,6 +144,16 @@ aws-ha-autoscaling-project/
 
 ---
 
+## 📚 Documentation
+
+| Document                  | Purpose |
+|---------------------------|---------|
+| [DEV_HISTORY.md](./DEV_HISTORY.md)     | Detailed journal of challenges, fixes, timeline, and lessons learned |
+| [AWS_COMMANDS.md](./AWS_COMMANDS.md)   | PowerShell cheat sheet + frequently used commands |
+| [PRESENTATION_NOTES.md](./PRESENTATION_NOTES.md) | Talking points and framing for instructor presentation |
+
+---
+
 ## 🚀 How to Demo the Pipeline
 
 1. Make a small change and push to `development`
@@ -157,6 +166,8 @@ aws-ha-autoscaling-project/
 ## 🚀 Future Plans & Roadmap
 
 This project is intentionally being used as a **hands-on learning platform** to build real DevOps and Cloud Engineering skills while preparing for the AWS Solutions Architect Associate certification.
+
+**See [DEV_HISTORY.md](./DEV_HISTORY.md)** for the detailed current roadmap and remaining work.
 
 ### CI/CD Pipeline Evolution
 

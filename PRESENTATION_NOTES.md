@@ -38,22 +38,34 @@ Walk through the actual run:
 
 This is where you can stand out.
 
-**Recommended framing:**
+**Recommended framing (updated June 2026):**
 
-> "Right now, the frontend is successfully deployed and working in the Staging environment. However, the backend is not reliably persisting data to the database."
+> "The full application is now working end-to-end in the development environment. The React frontend loads through the Application Load Balancer, the Node.js backend is running on both instances in the Auto Scaling Group, and tasks created in the UI are successfully saved to Amazon RDS MySQL."
 
-Then explain **why** you're not promoting to Production:
+**Talk about the real journey:**
 
-> "Because the core functionality (saving tasks) isn't working end-to-end, I made the decision to hold at Staging. This is exactly what the manual approval gate is designed for — to prevent features that aren't ready from reaching real users."
+The honest story is much stronger than pretending everything worked smoothly:
 
-**Talk about the blockers clearly:**
+- We went through multiple failed attempts to get the backend talking to RDS
+- Faced repeated issues with user-data not installing the correct versions of Node and nginx on Amazon Linux 2
+- Dealt with IAM permission restrictions on both the GitHub OIDC role and EC2 instance roles
+- Discovered and fixed subtle issues like SSM parameters containing port numbers (`:3306`) that broke DNS resolution in Node.js
+- Completely rewrote the user-data script to be resilient (proper Node 16 via NodeSource, correct nginx installation via `amazon-linux-extras`, early region export, and proper logging)
 
-- Limited IAM permissions on the GitHub Actions role (due to company security policies)
-- Terraform drift on pre-existing resources
-- Difficulty managing ASG refreshes cleanly
+**Key message:**
+
+> "This project taught me far more through debugging and fixing real infrastructure problems than it would have if everything had worked on the first try. The detailed history of challenges and solutions is documented in [DEV_HISTORY.md](./DEV_HISTORY.md)."
+
+**Talk about the blockers you actually overcame:**
+
+- Amazon Linux 2 package realities (nginx and modern Node not available in base repos)
+- SSM Parameter Store + IAM permission propagation delays
+- Making Auto Scaling Group Instance Refreshes reliable
+- Proper separation of concerns between what belongs in Terraform vs what must be handled at runtime in user-data
 
 Frame it as:
-> "These are real-world constraints that many engineers face. The important thing is that I was still able to deliver a working frontend and a professional-grade promotion pipeline despite these limitations."
+
+> "These are the kinds of messy, real-world problems you run into when moving beyond tutorials. Being able to diagnose them, document them, and systematically fix them is a much more valuable skill than just clicking 'deploy' in a console."
 
 ---
 
