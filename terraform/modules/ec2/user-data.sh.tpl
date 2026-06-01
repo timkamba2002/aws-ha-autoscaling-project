@@ -1,4 +1,7 @@
 #!/bin/bash
+# Redirect all output to a log file + console for easier debugging later
+exec > >(tee /var/log/user-data.log | logger -t user-data -s 2>/dev/console) 2>&1
+
 set -euo pipefail
 
 echo "=== HA Project Full Stack Bootstrap - $(date) ==="
@@ -31,14 +34,36 @@ HTMLEOF
 echo "OK $(date -Iseconds)" > /var/www/html/health
 
 # ============================================================
-# INSTALL REQUIRED PACKAGES
+# SET REGION EARLY (critical for all aws cli calls)
 # ============================================================
-yum update -y || true
-yum install -y httpd nginx nodejs npm awscli unzip || true
+export AWS_DEFAULT_REGION=us-east-1
+echo "AWS region set to $AWS_DEFAULT_REGION"
 
-# Stop Apache if it was previously used (we'll use nginx as single reverse proxy)
+# ============================================================
+# INSTALL REQUIRED PACKAGES (Amazon Linux 2 specific)
+# ============================================================
+echo "=== Installing base packages ==="
+
+# Update and install common tools
+yum update -y || true
+
+# Install base packages (httpd is only for cleanup)
+yum install -y httpd unzip awscli || true
+
+# Stop/disable Apache (we use nginx instead)
 systemctl stop httpd 2>/dev/null || true
 systemctl disable httpd 2>/dev/null || true
+
+# --- Node.js 16 via NodeSource (required on AL2 due to glibc) ---
+echo "=== Installing Node.js 16 via NodeSource ==="
+curl -fsSL https://rpm.nodesource.com/setup_16.x | bash - || true
+yum install -y nodejs || true
+node --version || echo "WARNING: node not found after install"
+
+# --- Nginx via amazon-linux-extras (correct way on AL2) ---
+echo "=== Installing nginx via amazon-linux-extras ==="
+amazon-linux-extras install nginx1 -y || true
+nginx -v || echo "WARNING: nginx not found after install"
 
 # ============================================================
 # DEPLOY REACT FRONTEND FROM S3
@@ -47,7 +72,11 @@ FRONTEND_BUCKET="${frontend_bucket}"
 echo "Fetching React build from s3://$FRONTEND_BUCKET/frontend/current/"
 
 mkdir -p /var/www/html
-aws s3 sync "s3://$FRONTEND_BUCKET/frontend/current/" /var/www/html/ --delete 2>/dev/null || true
+if aws s3 sync "s3://$FRONTEND_BUCKET/frontend/current/" /var/www/html/ --delete; then
+  echo "Frontend synced successfully"
+else
+  echo "WARNING: Frontend sync had issues"
+fi
 
 chown -R nginx:nginx /var/www/html 2>/dev/null || chown -R ec2-user:ec2-user /var/www/html 2>/dev/null || true
 find /var/www/html -type d -exec chmod 755 {} + 2>/dev/null || true
@@ -64,17 +93,15 @@ mkdir -p /opt/ha-backend
 cd /opt/ha-backend
 
 # Download backend code (uploaded by GitHub Actions)
-aws s3 cp "s3://$FRONTEND_BUCKET/backend/backend.zip" /tmp/backend.zip 2>/dev/null || true
-
-if [ -f /tmp/backend.zip ]; then
-  unzip -o /tmp/backend.zip -d /opt/ha-backend/ || true
+if aws s3 cp "s3://$FRONTEND_BUCKET/backend/backend.zip" /tmp/backend.zip; then
+  unzip -o /tmp/backend.zip -d /opt/ha-backend/
   rm -f /tmp/backend.zip
   echo "Backend code extracted"
 else
-  echo "WARNING: backend.zip not found — backend will not run"
+  echo "WARNING: Could not download backend.zip"
 fi
 
-# Fetch DB credentials from SSM (now that permissions are restored)
+# Fetch DB credentials from SSM (region is already set above)
 echo "Fetching DB credentials from SSM..."
 DB_HOST=$(aws ssm get-parameter --name "/ha-project/development/db_host" --query "Parameter.Value" --output text 2>/dev/null || echo "")
 DB_USER=$(aws ssm get-parameter --name "/ha-project/development/db_user" --query "Parameter.Value" --output text 2>/dev/null || echo "admin")
@@ -82,6 +109,8 @@ DB_PASSWORD=$(aws ssm get-parameter --name "/ha-project/development/db_password"
 
 if [ -z "$DB_HOST" ]; then
   echo "ERROR: Could not retrieve DB_HOST from SSM. Backend will fail to connect."
+else
+  echo "DB credentials retrieved successfully"
 fi
 
 # Create .env for backend
@@ -96,9 +125,9 @@ EOF
 
 echo ".env created"
 
-# Install backend dependencies
+# Install backend dependencies (in case zip is incomplete)
 cd /opt/ha-backend
-npm install --production 2>&1 | tail -3 || true
+npm install --production 2>&1 | tail -5 || true
 
 # Create systemd service for backend
 cat > /etc/systemd/system/ha-backend.service << 'SERVICEEOF'
@@ -122,13 +151,15 @@ SERVICEEOF
 
 systemctl daemon-reload
 systemctl enable ha-backend
-systemctl start ha-backend || true
+systemctl start ha-backend || echo "WARNING: Backend service start had issues"
 
-echo "Backend service started"
+echo "Backend service attempted to start. Current status: $(systemctl is-active ha-backend || true)"
 
 # ============================================================
 # NGINX AS REVERSE PROXY (Frontend + API)
 # ============================================================
+echo "=== Configuring Nginx ==="
+
 cat > /etc/nginx/conf.d/ha-app.conf << 'NGINXEOF'
 server {
     listen 80;
@@ -165,9 +196,15 @@ NGINXEOF
 
 rm -f /etc/nginx/conf.d/default.conf 2>/dev/null || true
 
-nginx -t && systemctl enable nginx && systemctl restart nginx || true
+if nginx -t; then
+  systemctl enable nginx
+  systemctl restart nginx
+  echo "Nginx configured and started successfully"
+else
+  echo "ERROR: nginx configuration test failed"
+fi
 
-echo "Nginx configured as reverse proxy"
+echo "Nginx status: $(systemctl is-active nginx || true)"
 
 # Final health file
 echo "OK $(date -Iseconds)" > /var/www/html/health
@@ -175,4 +212,5 @@ echo "OK $(date -Iseconds)" > /var/www/html/health
 echo "=== Full Stack Bootstrap Complete - $(date) ==="
 echo "Frontend: http://localhost/"
 echo "API:      http://localhost/api/"
-echo "Backend service status: $(systemctl is-active ha-backend)"
+echo "Backend service status: $(systemctl is-active ha-backend || true)"
+echo "Check /var/log/user-data.log for detailed bootstrap logs"
