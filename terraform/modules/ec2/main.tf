@@ -34,31 +34,30 @@ resource "aws_iam_role_policy" "s3_frontend_read" {
   })
 }
 
-# NOTE: We intentionally commented this out because the GitHub OIDC role
-# (GitHubActionsDeployRole-HAProjectV2) does not have iam:PutRolePolicy permission.
-# Someone with higher IAM access will need to attach this policy manually to
-# ha-project-ec2-frontend-role if full SSM access from instances is required.
-#
-# resource "aws_iam_role_policy" "ssm_read_db_creds" {
-#   name = "SSMReadDBCredentials"
-#   role = aws_iam_role.ec2_role.id
-#
-#   policy = jsonencode({
-#     Version = "2012-10-17"
-#     Statement = [{
-#       Effect = "Allow"
-#       Action = [
-#         "ssm:GetParameter",
-#         "ssm:GetParameters"
-#       ]
-#       Resource = [
-#         "arn:aws:ssm:us-east-1:866934333672:parameter/ha-project/development/db_password",
-#         "arn:aws:ssm:us-east-1:866934333672:parameter/ha-project/development/db_host",
-#         "arn:aws:ssm:us-east-1:866934333672:parameter/ha-project/development/db_user"
-#       ]
-#     }]
-#   })
-# }
+# Allow EC2 instances to read DB credentials from SSM Parameter Store.
+# This was previously commented out because the GitHub OIDC role lacked
+# iam:PutRolePolicy permission. Now that permissions are restored on the
+# human IAM user, this can be applied cleanly from Terraform.
+resource "aws_iam_role_policy" "ssm_read_db_creds" {
+  name = "SSMReadDBCredentials"
+  role = aws_iam_role.ec2_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "ssm:GetParameter",
+        "ssm:GetParameters"
+      ]
+      Resource = [
+        "arn:aws:ssm:us-east-1:866934333672:parameter/ha-project/development/db_password",
+        "arn:aws:ssm:us-east-1:866934333672:parameter/ha-project/development/db_host",
+        "arn:aws:ssm:us-east-1:866934333672:parameter/ha-project/development/db_user"
+      ]
+    }]
+  })
+}
 
 resource "aws_iam_instance_profile" "ec2_profile" {
   name = "ha-project-ec2-frontend-profile"
