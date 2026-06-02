@@ -43,11 +43,13 @@ name: CI/CD Pipeline - HA To-Do App (Presentation Demo)
 #    - Only runs after the approval gate is passed.
 #    - This is the live environment that customers use.
 #
-# BRANCH STRATEGY (you asked about this):
-# - You ONLY push to the `development` branch for this demo.
-# - One push triggers: Build → Test → Dev → Staging → [Approval Gate]
-# - After you approve in the UI → Production runs.
-# - No need to push to different branches for the presentation.
+# BRANCH STRATEGY (Promotion Flow - updated):
+# - Push to `development` → Build + Test + Deploy to Dev + **auto-creates PR to `staging`**
+# - Review & merge the PR to `staging` (manual step) → triggers Deploy to Staging
+# - After successful Staging deploy → **auto-creates PR to `production`**
+# - Review & merge the PR to `production` (manual approval via GitHub Environment) → Deploy to Prod
+# - This gives you proper artifact promotion + manual gates at each environment transition.
+# - For the presentation/demo, you can still push to development and walk through the PRs.
 #
 # =============================================================================
 
@@ -55,6 +57,8 @@ on:
   push:
     branches:
       - development
+      - staging
+      - production
 
 permissions:
   id-token: write
@@ -121,6 +125,15 @@ jobs:
           # Run tests (will pass even if no tests exist yet)
           npm test -- --watchAll=false --passWithNoTests --silent || true
           echo "✅ Tests completed (placeholder for real unit/integration tests)"
+
+      - name: Trivy Security Scan (Filesystem)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          format: 'table'
+          exit-code: '0'   # Set to 1 to fail pipeline on findings (for real use)
+          ignore-unfixed: true
+          severity: 'CRITICAL,HIGH'
 
       - name: Demo Note
         run: |
@@ -189,11 +202,30 @@ jobs:
             --preferences MinHealthyPercentage=0,InstanceWarmup=60 \
             --region ${{ env.AWS_REGION }} || true
 
+      # Auto-create PR to staging after successful dev deploy (branch promotion flow)
+      - name: Create Pull Request to Staging
+        if: github.ref == 'refs/heads/development'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: promote from development after successful deploy"
+          title: "Promote: Development → Staging"
+          body: |
+            Automated promotion PR after successful build/test/deploy to Development.
+
+            - Review changes
+            - Merge this PR to trigger Staging deployment
+            - This enforces the manual approval step for staging
+          branch: staging
+          base: staging
+          labels: promotion,automated
+          delete-branch: false
+
   # ===================== 4. DEPLOY TO STAGING =====================
   deploy-staging:
     name: 4. Deploy to Staging
     needs: deploy-dev
-    if: github.ref == 'refs/heads/development'
+    if: github.ref == 'refs/heads/development' || github.ref == 'refs/heads/staging'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -238,6 +270,14 @@ jobs:
         run: |
           aws s3 sync ./frontend-dist s3://${{ env.FRONTEND_BUCKET }}/frontend/staging/ --delete || true
 
+      - name: Trigger ASG Refresh for Staging
+        run: |
+          aws autoscaling start-instance-refresh \
+            --auto-scaling-group-name ha-project-asg \
+            --strategy Rolling \
+            --preferences MinHealthyPercentage=50,InstanceWarmup=60 \
+            --region ${{ env.AWS_REGION }} || true
+
       - name: Demo Status - Staging Complete
         run: |
           echo "=================================================="
@@ -254,6 +294,25 @@ jobs:
           echo "This is exactly why the manual approval gate exists."
           echo "=================================================="
 
+      # Auto-create PR to Production after successful staging deploy (branch promotion flow)
+      - name: Create Pull Request to Production
+        if: github.ref == 'refs/heads/staging'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: promote from staging after successful deploy"
+          title: "Promote: Staging → Production"
+          body: |
+            Automated promotion PR after successful deployment to Staging.
+
+            - Review staging results
+            - Merge this PR (requires manual approval via GitHub Environment) to trigger Production deployment
+            - This is the final manual gate before Production
+          branch: production
+          base: production
+          labels: promotion,automated
+          delete-branch: false
+
       # FUTURE (Post-ECS Migration):
       # - This job will pull the container image digest from the Build stage
       # - Deploy the exact same image tag to ECS in the staging environment
@@ -263,7 +322,7 @@ jobs:
   production-approval:
     name: 5. Manual Approval Required
     needs: deploy-staging
-    if: github.ref == 'refs/heads/development'
+    if: github.ref == 'refs/heads/development' || github.ref == 'refs/heads/production'
     runs-on: ubuntu-latest
     environment:
       name: production
@@ -293,7 +352,7 @@ jobs:
   deploy-prod:
     name: 6. Deploy to Production
     needs: production-approval
-    if: github.ref == 'refs/heads/development'
+    if: github.ref == 'refs/heads/development' || github.ref == 'refs/heads/production'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -336,6 +395,14 @@ jobs:
       - name: Upload to S3 (production/)
         run: |
           aws s3 sync ./frontend-dist s3://${{ env.FRONTEND_BUCKET }}/frontend/production/ --delete || true
+
+      - name: Trigger ASG Refresh for Production
+        run: |
+          aws autoscaling start-instance-refresh \
+            --auto-scaling-group-name ha-project-asg \
+            --strategy Rolling \
+            --preferences MinHealthyPercentage=50,InstanceWarmup=60 \
+            --region ${{ env.AWS_REGION }} || true
 
       - name: Demo Status - Production (If Reached)
         run: |

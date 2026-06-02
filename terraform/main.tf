@@ -55,6 +55,16 @@ resource "aws_s3_bucket_versioning" "frontend_builds" {
 }
 
 # ==================== MONITORING (CloudWatch Logs + Alarms) ====================
+# Simple SNS topic for alarm notifications (email subscription can be added manually in console or via additional resource)
+resource "aws_sns_topic" "alarms" {
+  name = "${var.environment}-ha-project-alarms"
+
+  tags = {
+    Environment = var.environment
+    ManagedBy   = "terraform"
+  }
+}
+
 module "monitoring" {
   source = "./modules/monitoring"
 
@@ -63,7 +73,9 @@ module "monitoring" {
   rds_instance_identifier         = aws_db_instance.main.identifier
   rds_cpu_threshold               = 80
   rds_free_storage_threshold_bytes = 5 * 1024 * 1024 * 1024   # 5 GB
-  alarm_sns_topic_arn             = var.alarm_sns_topic_arn
+  alarm_sns_topic_arn             = aws_sns_topic.alarms.arn
+  enable_connection_alarm         = true
+  rds_max_connections_threshold   = 80
   tags = {
     Environment = var.environment
     ManagedBy   = "terraform"
