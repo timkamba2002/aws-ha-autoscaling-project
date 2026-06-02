@@ -225,8 +225,7 @@ jobs:
   # ===================== 4. DEPLOY TO STAGING =====================
   deploy-staging:
     name: 4. Deploy to Staging
-    needs: deploy-dev
-    if: github.ref == 'refs/heads/development' || github.ref == 'refs/heads/staging'
+    if: github.ref == 'refs/heads/staging'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -322,8 +321,7 @@ jobs:
   # ===================== 5. MANUAL APPROVAL GATE =====================
   production-approval:
     name: 5. Manual Approval Required
-    needs: deploy-staging
-    if: github.ref == 'refs/heads/development' || github.ref == 'refs/heads/production'
+    if: github.ref == 'refs/heads/production'
     runs-on: ubuntu-latest
     environment:
       name: production
@@ -352,8 +350,7 @@ jobs:
   # ===================== 6. DEPLOY TO PRODUCTION =====================
   deploy-prod:
     name: 6. Deploy to Production
-    needs: production-approval
-    if: github.ref == 'refs/heads/development' || github.ref == 'refs/heads/production'
+    if: github.ref == 'refs/heads/production'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
