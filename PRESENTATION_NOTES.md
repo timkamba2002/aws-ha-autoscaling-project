@@ -60,7 +60,8 @@ The honest story is much stronger than pretending everything worked smoothly:
 
 - Amazon Linux 2 package realities (nginx and modern Node not available in base repos)
 - SSM Parameter Store + IAM permission propagation delays
-- Making Auto Scaling Group Instance Refreshes reliable
+- Making Auto Scaling Group Instance Refreshes reliable (including the 30e12a52 successful refresh that produced clean i-02689... / i-06565... instances)
+- Diagnosing and documenting real infrastructure sprawl (9 ha-project-vpc + 5 ha-project-nat-gateway) caused by per-env state + non-namespaced networking module during repair; verified no impact on live fleet; added production-grade discovery + cleanup tooling in AWS_COMMANDS.md
 - Proper separation of concerns between what belongs in Terraform vs what must be handled at runtime in user-data
 
 Frame it as:
@@ -83,11 +84,12 @@ You can tie this directly to enterprise practices.
 
 ## Future Plans (Show Forward Thinking)
 
-Briefly walk through the roadmap:
+Briefly walk through the roadmap (you can say "some already in progress"):
 
-- First priority: Get the backend fully working and add integration tests
+- **Immediate (this week)**: Complete the VPC/NAT orphan cleanup using the live discovery commands (cost control + account hygiene). This is a concrete Operations win.
+- First priority: Get the backend fully working and add integration tests (or confirm it is solid post-refresh)
 - Then: Containerize the backend with Docker and migrate to ECS Fargate
-- Improve secrets management and observability
+- Improve secrets management and observability (SNS alarms + Trivy already partially in place)
 - Add Policy as Code and container scanning
 
 This shows you have a plan and aren't just stopping here.

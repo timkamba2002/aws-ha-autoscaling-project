@@ -2,10 +2,12 @@
 
 A Cloud/DevOps learning project demonstrating a production-style CI/CD pipeline with infrastructure as code, auto-scaling, and manual promotion gates.
 
-**Current Status (June 2026):**  
-The full stack is now working end-to-end in the development environment. React frontend loads through the ALB, Node.js backend is running on both instances, and tasks created in the UI are successfully persisted to RDS MySQL.
+**Current Status (June 2026, post 30e12a52 refresh):**  
+The full stack is working end-to-end in the development environment. React frontend loads through the ALB, Node.js backend is running on both instances (i-02689450a477ba8d1 + i-06565e76c00a3b756), and tasks created in the UI are successfully persisted to the existing myapp-rds MySQL.
 
-See [DEV_HISTORY.md](./DEV_HISTORY.md) for the complete, honest record of challenges, fixes, and lessons learned.
+A full VPC/NAT audit was performed after colleague feedback on the 9 tagged resources; live fleet confirmed unaffected (successful rolling refresh), discovery + safe cleanup commands + cost explanation added to [AWS_COMMANDS.md](./AWS_COMMANDS.md#8-auditing-vpc-and-nat-gateways-for-cost-and-limits). See [DEV_HISTORY.md](./DEV_HISTORY.md) (especially challenge #6) for the complete, honest record.
+
+See [PRESENTATION_NOTES.md](./PRESENTATION_NOTES.md) and [NEXT_STEPS.md](./NEXT_STEPS.md) for demo talking points and remaining items.
 
 ---
 

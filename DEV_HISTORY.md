@@ -109,36 +109,63 @@ This forced us to hard-code the exact installation methods that actually worked 
 
 ---
 
+### 6. Infrastructure Sprawl — VPCs and NAT Gateways (June 2026)
+
+**Problem**:  
+After running the audit commands during the post-refresh verification, the console and CLI showed **9 VPCs tagged `ha-project-vpc`** (all available) and **5 NAT Gateways tagged `ha-project-nat-gateway`** (plus others from other projects), for a total of 9 NATs in the account. A simple route-table query for the private RT returned blank. Colleague noted the 9 NAT limit concern and possible deletion of the "oldest" one, and correctly flagged the monthly bill risk.
+
+**Root Cause**:
+- `terraform/modules/vpc/main.tf` hard-codes `Name = "ha-project-vpc"`, `"ha-project-nat-gateway"`, `"ha-project-private-rt"` and fixed CIDR `10.0.0.0/16` with **no `var.environment`**.
+- `main.tf` calls the vpc module with no environment parameter or namespacing.
+- The project correctly uses **separate S3 backend state keys** per environment (`ha-project/{env}/terraform.tfstate`).
+- During the extended repair/debug phase (multiple manual `terraform apply`, state repair attempts, staging/prod experiments, repeated user-data/SSM/RDS fixes), every independent state file created its own full duplicate network stack.
+- This is the same underlying issue that produced the `VpcLimitExceeded` and `AddressLimitExceeded` errors earlier.
+
+**Impact Assessment (Deletion of "oldest" NAT)**:
+- **No impact on the running fleet.**
+- Evidence: The Instance Refresh `30e12a52-85f8-422f-86b3-c059336f66e3` (started after the verify script and your colleague's note) completed **Successful** (100%, EndTime 2026-06-02T14:36:32Z).
+- Immediately after, `./scripts/verify-deployment.ps1` showed two **brand-new** instances (`i-02689450a477ba8d1` us-east-1a and `i-06565e76c00a3b756` us-east-1b), both Healthy/InService and healthy in the ALB target group.
+- Those instances successfully completed the full modern user-data bootstrap (NodeSource 16, `amazon-linux-extras install nginx1`, early region export, SSM Parameter Store → `/opt/ha-backend/.env`, S3 frontend pull, nginx reverse proxy, ha-backend service). This requires working outbound internet (NAT) + SSM + S3.
+- If the live NAT for the private subnets used by the current ASG had been the one deleted, the refresh would have failed to produce healthy instances.
+
+The deletion almost certainly removed a true orphan from the repair phase. The current live instances + ALB + RDS are using one of the remaining ha-project NATs in one of the 9 VPCs.
+
+**How We Documented & Are Fixing It**:
+- Greatly expanded the "Auditing VPC and NAT Gateways" section in [AWS_COMMANDS.md](AWS_COMMANDS.md) with live-instance-first discovery (start from the two current i- IDs), ALB/RDS cross-checks, reliable route table queries per VPC, and per-env `terraform state list` + `state show module.vpc.aws_vpc.main` inspection.
+- Added "Expected vs Actual" explanation + cost warning + safe cleanup order.
+- This becomes part of the **Operations & Reliability** story: you observed excess spend, diagnosed IaC root cause, verified no customer impact via successful rolling refresh + post-refresh health, and have an explicit cleanup plan.
+
+**Lesson**:
+Separate state files are great for isolation, but base infrastructure (networking) must either be shared (via data sources / remote state lookup) or explicitly namespaced per environment from day one. We accumulated duplicates because the network layer was not treated as a reusable foundation during the chaotic repair period.
+
+---
+
 ## Current State (as of latest session)
 
-- Both instances in the dev ASG are healthy behind the ALB
-- React frontend loads correctly through the public ALB
-- Node.js backend is running on both instances
-- Tasks created in the UI are successfully saved to RDS MySQL and visible after refresh
-- The improved user-data script now handles Node 16, nginx, region, and SSM credentials automatically
-- The `db_host` SSM parameter has been cleaned (no more `:3306`)
+- **Fleet stabilized via Instance Refresh**: Refresh ID `30e12a52-85f8-422f-86b3-c059336f66e3` completed **Successful** (100%) on 2026-06-02. New healthy instances `i-02689450a477ba8d1` (us-east-1a) + `i-06565e76c00a3b756` (us-east-1b) are InService, passing ALB target health, and serving the live site.
+- React frontend loads correctly through the public ALB; tasks created in UI persist to the existing `myapp-rds` MySQL instance.
+- Both instances bootstrapped cleanly with the hardened `user-data.sh.tpl` (Node 16 via NodeSource, nginx via `amazon-linux-extras`, SSM-driven `.env`, early `/health`, logging to `/var/log/user-data.log`).
+- The `db_host` SSM parameter is clean (no port); backend connects reliably.
+- **VPC/NAT audit completed (first pass)**: Identified 9 ha-project-vpc + 5 ha-project-nat-gateway accumulation. Live fleet confirmed unaffected (see challenge #6). Full discovery commands + TF state cross-checks + cleanup guidance documented in AWS_COMMANDS.md.
 
-**Still Fragile Areas**:
-- Terraform is not well isolated between environments (causes errors when deploying to staging/prod)
-- Pipeline still uses defensive "non-fatal issues" pattern
-- No automated promotion flow with PRs yet (manual workflow_dispatch or push triggers)
+**Still Fragile Areas / Known Debt**:
+- Terraform network resources (VPC/NAT/subnets/RTs) are not environment-namespaced → repair-phase duplication (now being cleaned).
+- Pipeline still uses defensive "non-fatal issues" pattern for some applies (we continue on error for demo).
+- Promotion flow with auto-PRs exists in code but has not been end-to-end tested with a real push + merge cycle on this branch yet.
 
 ---
 
 ## What We Have Left / Roadmap
 
-### Immediate / High Priority
-- Verify the new user-data script works cleanly on fresh instances after the SSM parameter fix
-- Update documentation (this file + README + PRESENTATION_NOTES)
-- Decide on next infrastructure improvement (ECS Fargate vs stay on EC2)
+### Immediate / High Priority (largely complete as of this session)
+- ✅ Verify the improved user-data script works cleanly on fresh instances (confirmed via 30e12a52 refresh + post-verify on i-02689... / i-06565...).
+- ✅ Update documentation (this file + AWS_COMMANDS.md + README + PRESENTATION_NOTES) — including full honest record of the VPC/NAT sprawl.
+- VPC/NAT cost & limit audit + discovery tooling (completed in this session; cleanup of true orphans is the remaining manual step).
+- Run a tiny end-to-end test of the branch promotion flow (push change to development → watch auto-PR creation to staging).
 
 ### Pipeline & Process
-- Implement proper branch promotion flow:
-  - Push to `development` → auto PR to `staging`
-  - Merge to `staging` (manual approval) → deploy to staging
-  - After staging passes → auto PR to `production`
-  - Merge to `production` (manual approval) → deploy to prod
-- Improve Terraform environment isolation (workspaces or separate state files)
+- ✅ Branch promotion flow with auto-PRs implemented in `.github/workflows/deploy.yml` (peter-evans/create-pull-request + permissions + dev/staging/prod triggers). Needs one real push + observe PR creation + manual merge to staging as a final live test.
+- Improve Terraform environment isolation for networking (namespacing or shared base network via data source / remote state) — this is the root cause of the 9-VPC accumulation; cleanup first, then a small refactor to prevent recurrence.
 
 ### Next Technical Domains (Instructor 4-Domain Model)
 1. **Security** — Add Trivy scanning in pipeline, improve IAM least-privilege, consider Secrets Manager
@@ -255,4 +282,4 @@ Documenting this journey honestly is more valuable than pretending everything wo
 
 ---
 
-*Last major update: June 2026*
+*Last major update: June 2026 (post Instance Refresh 30e12a52 + 9-VPC/NAT audit + docs refresh)*
