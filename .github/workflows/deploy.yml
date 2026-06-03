@@ -24,6 +24,7 @@ name: CI/CD Pipeline - HA To-Do App (Presentation Demo)
 #    - Deploys the built artifact to the Development environment.
 #    - Usually the most unstable environment, used by developers for quick testing.
 #    - Fast feedback loop.
+#    - Post-demo: terraform apply will fail the job on errors (no more swallowed "non-fatal continuing for demo").
 #
 # 4. DEPLOY TO STAGING
 #    - Deploys the exact same artifact to a Staging environment.
@@ -31,6 +32,7 @@ name: CI/CD Pipeline - HA To-Do App (Presentation Demo)
 #    - This is where QA / UAT / final checks happen.
 #    - Why important? You validate the release in a production-like environment
 #      before giving it to real users.
+#    - Post-demo: terraform apply will fail the job on errors (no more swallowed "non-fatal continuing for demo").
 #
 # 5. MANUAL APPROVAL GATE (Production Environment)
 #    - The pipeline STOPS here.
@@ -42,6 +44,7 @@ name: CI/CD Pipeline - HA To-Do App (Presentation Demo)
 # 6. DEPLOY TO PRODUCTION
 #    - Only runs after the approval gate is passed.
 #    - This is the live environment that customers use.
+#    - Post-demo: terraform apply will fail the job on errors (no more swallowed "non-fatal continuing for demo").
 #
 # BRANCH STRATEGY (Promotion Flow - updated):
 # - Push to `development` → Build + Test + Deploy to Dev + **auto-creates PR to `staging`**
@@ -66,6 +69,12 @@ name: CI/CD Pipeline - HA To-Do App (Presentation Demo)
 #   block the chain. This makes the graph always show the full intended flow
 #   with the appropriate jobs executing or appearing as "skipped" per branch.
 # - The actual execution per push is still gated by the `if:` + branch.
+#
+# POST-DEMO: Terraform apply steps no longer swallow errors with "non-fatal / continuing for demo".
+# If terraform apply fails (e.g. IAM permission issues on shared roles, AlreadyExists on global resources
+# due to per-env states + non-namespaced names), the job will now fail (red) for visibility.
+# The ec2 IAM role is now conditional (only created in dev state) + lifecycle ignore_changes = [tags]
+# to avoid UntagRole/TagRole errors from the limited GitHubActionsDeployRole.
 #
 # =============================================================================
 
@@ -197,24 +206,16 @@ jobs:
             -backend-config="encrypt=true" \
             -reconfigure
 
-          # Note: Some "already exists" / permission errors are expected for global resources
-          # (on re-runs or when other env states have created them). Limited OIDC perms too.
-          # We continue so the pipeline stays green for the demo. SSM + frontend prefix now env-aware.
-          set +e
+          # TF errors will now fail the job (no more auto-continue for demo).
+          # After demo, we want real visibility into errors (e.g. IAM permission gaps, already-exists on shared resources).
+          # The shared IAM role etc. are now handled with count + lifecycle ignore in the module to reduce noise.
           terraform apply \
             -refresh=false \
             -lock=false \
             -var="db_password=${{ secrets.DB_PASSWORD }}" \
             -var="environment=development" \
             -var="frontend_s3_prefix=current" \
-            -auto-approve > /tmp/tf-apply.log 2>&1
-          TF_CODE=$?
-          set -e
-          if [ $TF_CODE -ne 0 ]; then
-            echo "Terraform had non-fatal issues (common with existing resources) - continuing"
-            echo "Last 10 lines of Terraform log:"
-            tail -10 /tmp/tf-apply.log
-          fi
+            -auto-approve
 
       - name: Deploy Frontend to Development
         uses: actions/download-artifact@v4
@@ -317,27 +318,16 @@ jobs:
             -backend-config="encrypt=true" \
             -reconfigure
 
-          # Note: "already exists" / permission errors are EXPECTED for global-named resources
-          # (S3 bucket, ALB, RDS subnet group, CW log groups, IAM roles, etc.) because:
-          # - They use non-env names (shared across dev/staging/prod in this demo setup)
-          # - Separate TF state per env (staging state doesn't know dev created them)
-          # - Limited perms on GitHubActionsDeployRole (e.g. no iam:TagRole)
-          # The || continue keeps the job green. SSM paths and frontend S3 prefix are now env-aware.
-          set +e
+          # TF errors will now fail the job (no more auto-continue for demo).
+          # After demo, we want real visibility into errors (e.g. IAM permission gaps, already-exists on shared resources).
+          # The shared IAM role etc. are now handled with count + lifecycle ignore in the module to reduce noise.
           terraform apply \
             -refresh=false \
             -lock=false \
             -var="db_password=${{ secrets.DB_PASSWORD }}" \
             -var="environment=staging" \
             -var="frontend_s3_prefix=staging" \
-            -auto-approve > /tmp/tf-apply.log 2>&1
-          TF_CODE=$?
-          set -e
-          if [ $TF_CODE -ne 0 ]; then
-            echo "Terraform had non-fatal issues (existing resources) - continuing for demo"
-            echo "Last 10 lines of Terraform log:"
-            tail -10 /tmp/tf-apply.log
-          fi
+            -auto-approve
 
       - name: Deploy Frontend to Staging
         uses: actions/download-artifact@v4
@@ -485,24 +475,16 @@ jobs:
             -backend-config="encrypt=true" \
             -reconfigure
 
-          # Same note as Dev/Staging: expect "already exists" for global resources (S3/ALB/RDS/IAM/CW etc.)
-          # due to shared names + separate per-env state + limited deploy role perms.
-          # Frontend prefix and SSM paths are now env-aware so staging/prod instances pull correct artifacts/creds.
-          set +e
+          # TF errors will now fail the job (no more auto-continue for demo).
+          # After demo, we want real visibility into errors (e.g. IAM permission gaps, already-exists on shared resources).
+          # The shared IAM role etc. are now handled with count + lifecycle ignore in the module to reduce noise.
           terraform apply \
             -refresh=false \
             -lock=false \
             -var="db_password=${{ secrets.DB_PASSWORD }}" \
             -var="environment=production" \
             -var="frontend_s3_prefix=production" \
-            -auto-approve > /tmp/tf-apply.log 2>&1
-          TF_CODE=$?
-          set -e
-          if [ $TF_CODE -ne 0 ]; then
-            echo "Terraform had non-fatal issues (existing resources/IAM) - continuing"
-            echo "Last 10 lines of Terraform log:"
-            tail -10 /tmp/tf-apply.log
-          fi
+            -auto-approve
 
       - name: Deploy Frontend to Production
         uses: actions/download-artifact@v4

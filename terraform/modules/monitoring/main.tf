@@ -48,7 +48,7 @@ resource "aws_cloudwatch_metric_alarm" "rds_free_storage_low" {
   namespace           = "AWS/RDS"
   period              = 300
   statistic           = "Average"
-  threshold           = var.rds_free_storage_threshold_bytes   # e.g. 5GB = 5368709120
+  threshold           = var.rds_free_storage_threshold_bytes # e.g. 5GB = 5368709120
   alarm_description   = "RDS free storage space is below 5GB"
   treat_missing_data  = "breaching"
 

@@ -1,5 +1,6 @@
 resource "aws_iam_role" "ec2_role" {
-  name = "ha-project-ec2-frontend-role"
+  count = var.environment == "development" ? 1 : 0
+  name  = "ha-project-ec2-frontend-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -10,13 +11,19 @@ resource "aws_iam_role" "ec2_role" {
     }]
   })
 
-  # Tags omitted to avoid requiring iam:TagRole permission on the GitHub OIDC deploy role.
-  # (The OIDC role has limited perms for security; creation of the EC2 role may still report AlreadyExists in non-dev env applies.)
+  # We use count + lifecycle ignore to support shared global role name across env-specific TF states.
+  # Only the development state creates/manages the role.
+  # Other env applies (staging/prod) use the existing role by name in the launch template.
+  # ignore_changes on tags prevents UntagRole/TagRole calls that the limited OIDC deploy role cannot perform.
+  lifecycle {
+    ignore_changes = [tags]
+  }
 }
 
 resource "aws_iam_role_policy" "s3_frontend_read" {
-  name = "S3FrontendBuildRead"
-  role = aws_iam_role.ec2_role.id
+  count = var.environment == "development" ? 1 : 0
+  name  = "S3FrontendBuildRead"
+  role  = "ha-project-ec2-frontend-role"
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -36,8 +43,9 @@ resource "aws_iam_role_policy" "s3_frontend_read" {
 # iam:PutRolePolicy permission. Now that permissions are restored on the
 # human IAM user, this can be applied cleanly from Terraform.
 resource "aws_iam_role_policy" "ssm_read_db_creds" {
-  name = "SSMReadDBCredentials"
-  role = aws_iam_role.ec2_role.id
+  count = var.environment == "development" ? 1 : 0
+  name  = "SSMReadDBCredentials"
+  role  = "ha-project-ec2-frontend-role"
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -57,8 +65,9 @@ resource "aws_iam_role_policy" "ssm_read_db_creds" {
 }
 
 resource "aws_iam_instance_profile" "ec2_profile" {
-  name = "ha-project-ec2-frontend-profile"
-  role = aws_iam_role.ec2_role.name
+  count = var.environment == "development" ? 1 : 0
+  name  = "ha-project-ec2-frontend-profile"
+  role  = "ha-project-ec2-frontend-role"
 }
 
 resource "aws_launch_template" "lt" {
@@ -67,7 +76,10 @@ resource "aws_launch_template" "lt" {
   instance_type = "t2.micro"
 
   iam_instance_profile {
-    name = aws_iam_instance_profile.ec2_profile.name
+    # Always use the fixed profile name. The profile resource is only created in the "development" state
+    # (see count on aws_iam_instance_profile), but the name is the same everywhere.
+    # Other env states rely on the role/profile having been created by a prior dev apply.
+    name = "ha-project-ec2-frontend-profile"
   }
 
   network_interfaces {
@@ -75,9 +87,9 @@ resource "aws_launch_template" "lt" {
   }
 
   user_data = base64encode(templatefile("${path.module}/user-data.sh.tpl", {
-    frontend_bucket  = var.frontend_bucket_name
-    frontend_prefix  = var.frontend_s3_prefix
-    environment      = var.environment
+    frontend_bucket = var.frontend_bucket_name
+    frontend_prefix = var.frontend_s3_prefix
+    environment     = var.environment
   }))
 
   tag_specifications {
