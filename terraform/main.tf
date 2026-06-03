@@ -18,6 +18,8 @@ module "ec2" {
   source               = "./modules/ec2"
   ec2_sg_id            = module.security_groups.ec2_sg_id
   frontend_bucket_name = var.frontend_builds_bucket
+  environment          = var.environment
+  frontend_s3_prefix   = var.frontend_s3_prefix
 }
 
 module "autoscaling" {
@@ -69,7 +71,7 @@ module "monitoring" {
   source = "./modules/monitoring"
 
   environment                     = var.environment
-  backend_log_group_name          = "/aws/ec2/ha-project-backend"
+  backend_log_group_name          = "/aws/ec2/ha-project-${var.environment}-backend"
   rds_instance_identifier         = aws_db_instance.main.identifier
   rds_cpu_threshold               = 80
   rds_free_storage_threshold_bytes = 5 * 1024 * 1024 * 1024   # 5 GB

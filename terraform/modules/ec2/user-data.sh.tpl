@@ -69,11 +69,12 @@ nginx -v || echo "WARNING: nginx not found after install"
 # DEPLOY REACT FRONTEND FROM S3
 # ============================================================
 FRONTEND_BUCKET="${frontend_bucket}"
-echo "Fetching React build from s3://$FRONTEND_BUCKET/frontend/current/"
+FRONTEND_PREFIX="${frontend_prefix}"
+echo "Fetching React build from s3://$FRONTEND_BUCKET/frontend/$FRONTEND_PREFIX/"
 
 mkdir -p /var/www/html
-if aws s3 sync "s3://$FRONTEND_BUCKET/frontend/current/" /var/www/html/ --delete; then
-  echo "Frontend synced successfully"
+if aws s3 sync "s3://$FRONTEND_BUCKET/frontend/$FRONTEND_PREFIX/" /var/www/html/ --delete; then
+  echo "Frontend synced successfully from $FRONTEND_PREFIX"
 else
   echo "WARNING: Frontend sync had issues"
 fi
@@ -103,9 +104,10 @@ fi
 
 # Fetch DB credentials from SSM (region is already set above)
 echo "Fetching DB credentials from SSM..."
-DB_HOST=$(aws ssm get-parameter --name "/ha-project/development/db_host" --query "Parameter.Value" --output text 2>/dev/null || echo "")
-DB_USER=$(aws ssm get-parameter --name "/ha-project/development/db_user" --query "Parameter.Value" --output text 2>/dev/null || echo "admin")
-DB_PASSWORD=$(aws ssm get-parameter --name "/ha-project/development/db_password" --with-decryption --query "Parameter.Value" --output text 2>/dev/null || echo "")
+ENV="${environment}"
+DB_HOST=$(aws ssm get-parameter --name "/ha-project/$ENV/db_host" --query "Parameter.Value" --output text 2>/dev/null || echo "")
+DB_USER=$(aws ssm get-parameter --name "/ha-project/$ENV/db_user" --query "Parameter.Value" --output text 2>/dev/null || echo "admin")
+DB_PASSWORD=$(aws ssm get-parameter --name "/ha-project/$ENV/db_password" --with-decryption --query "Parameter.Value" --output text 2>/dev/null || echo "")
 
 if [ -z "$DB_HOST" ]; then
   echo "ERROR: Could not retrieve DB_HOST from SSM. Backend will fail to connect."

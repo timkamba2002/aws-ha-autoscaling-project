@@ -1,4 +1,4 @@
-# DB Subnet Group (import if "main-db-subnet-group" already exists)
+# DB Subnet Group (shared across envs for this demo setup; creation will fail with AlreadyExists on non-dev applies due to separate state files)
 resource "aws_db_subnet_group" "main" {
   name       = "main-db-subnet-group"
   subnet_ids = module.vpc.private_subnet_ids
@@ -38,9 +38,11 @@ resource "aws_security_group" "rds_sg" {
 
 # PostgreSQL RDS Instance (import existing if identifier matches)
 # If you have an old MySQL instance, keep it and create this new one with a different identifier.
-# Read DB password from SSM Parameter Store (preferred method)
+# Read DB password from SSM Parameter Store (preferred method) - uses environment for multi-env support.
+# The data source is only read if no db_password var is passed (e.g. local runs); pipeline always passes the var.
 data "aws_ssm_parameter" "db_password" {
-  name            = "/ha-project/development/db_password"
+  count           = var.db_password == null ? 1 : 0
+  name            = "/ha-project/${var.environment}/db_password"
   with_decryption = true
 }
 
@@ -53,7 +55,7 @@ resource "aws_db_instance" "main" {
 
   db_name                = "myappdb"
   username               = "admin"
-  password               = coalesce(var.db_password, data.aws_ssm_parameter.db_password.value)
+  password               = var.db_password != null ? var.db_password : try(data.aws_ssm_parameter.db_password[0].value, "")
 
   vpc_security_group_ids = [aws_security_group.rds_sg.id]
   db_subnet_group_name   = aws_db_subnet_group.main.name
@@ -69,9 +71,9 @@ resource "aws_db_instance" "main" {
   }
 }
 
-# Store connection details in SSM so EC2 user-data can reliably fetch them
+# Store connection details in SSM so EC2 user-data can reliably fetch them (now env-specific)
 resource "aws_ssm_parameter" "db_host" {
-  name      = "/ha-project/development/db_host"
+  name      = "/ha-project/${var.environment}/db_host"
   type      = "String"
   value     = aws_db_instance.main.endpoint
   overwrite = true   # Prevents "ParameterAlreadyExists" errors
@@ -83,7 +85,7 @@ resource "aws_ssm_parameter" "db_host" {
 }
 
 resource "aws_ssm_parameter" "db_user" {
-  name      = "/ha-project/development/db_user"
+  name      = "/ha-project/${var.environment}/db_user"
   type      = "String"
   value     = "admin"
   overwrite = true   # Prevents "ParameterAlreadyExists" errors on re-runs

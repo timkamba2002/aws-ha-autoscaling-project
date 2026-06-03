@@ -51,6 +51,13 @@ name: CI/CD Pipeline - HA To-Do App (Presentation Demo)
 # - This gives you proper artifact promotion + manual gates at each environment transition.
 # - For the presentation/demo, you can still push to development and walk through the PRs.
 #
+# When a promotion PR appears (e.g. "Promote: Development → Staging"):
+#   1. Go to Pull requests tab.
+#   2. Open it, optionally review Files changed.
+#   3. Click Merge pull request.
+#   4. Watch the Actions tab – the merge triggers the next environment's deploy job.
+#   (The PR body itself now contains these numbered steps for the person who opens it.)
+#
 # JOB DEPENDENCY GRAPH (for nice linear visual in Actions UI):
 # build → test → deploy-dev → deploy-staging → production-approval → deploy-prod
 # - Connected with `needs: [previous]` on each job.
@@ -190,15 +197,24 @@ jobs:
             -backend-config="encrypt=true" \
             -reconfigure
 
-          # Note: Some "already exists" / permission errors are expected
-          # due to pre-created resources + limited OIDC IAM permissions.
-          # We continue so the pipeline stays green for the demo.
+          # Note: Some "already exists" / permission errors are expected for global resources
+          # (on re-runs or when other env states have created them). Limited OIDC perms too.
+          # We continue so the pipeline stays green for the demo. SSM + frontend prefix now env-aware.
+          set +e
           terraform apply \
             -refresh=false \
             -lock=false \
             -var="db_password=${{ secrets.DB_PASSWORD }}" \
             -var="environment=development" \
-            -auto-approve || echo "Terraform had non-fatal issues (common with existing resources) - continuing"
+            -var="frontend_s3_prefix=current" \
+            -auto-approve > /tmp/tf-apply.log 2>&1
+          TF_CODE=$?
+          set -e
+          if [ $TF_CODE -ne 0 ]; then
+            echo "Terraform had non-fatal issues (common with existing resources) - continuing"
+            echo "Last 10 lines of Terraform log:"
+            tail -10 /tmp/tf-apply.log
+          fi
 
       - name: Deploy Frontend to Development
         uses: actions/download-artifact@v4
@@ -238,11 +254,20 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_BODY: |
-            Automated promotion PR after successful build/test/deploy to Development.
+            ## 🚀 Automated Promotion PR: Development → Staging
 
-            - Review changes
-            - Merge this PR to trigger Staging deployment
-            - This enforces the manual approval step for staging
+            This PR was automatically created by the CI/CD pipeline after a successful build, test, and deploy to the **Development** environment.
+
+            ### What to do:
+            1. **Review the changes** (see the "Files changed" tab – this shows what is different between the `development` and `staging` branches).
+            2. **Merge this PR** (use "Merge pull request", "Squash and merge", or "Rebase and merge").
+               - Merging this PR will update the `staging` branch.
+               - This will automatically trigger the GitHub Actions workflow to **Deploy to Staging**.
+            3. After merging, go to the **Actions** tab and watch the new run for the `staging` branch.
+
+            This manual merge step enforces the required approval gate before promoting to Staging.
+
+            (Created by the deploy-dev job in `.github/workflows/deploy.yml`)
         run: |
           set +e
           if gh pr create \
@@ -292,14 +317,27 @@ jobs:
             -backend-config="encrypt=true" \
             -reconfigure
 
-          # Note: "already exists" errors are expected here due to previous runs + limited IAM.
-          # Pipeline continues for demo stability.
+          # Note: "already exists" / permission errors are EXPECTED for global-named resources
+          # (S3 bucket, ALB, RDS subnet group, CW log groups, IAM roles, etc.) because:
+          # - They use non-env names (shared across dev/staging/prod in this demo setup)
+          # - Separate TF state per env (staging state doesn't know dev created them)
+          # - Limited perms on GitHubActionsDeployRole (e.g. no iam:TagRole)
+          # The || continue keeps the job green. SSM paths and frontend S3 prefix are now env-aware.
+          set +e
           terraform apply \
             -refresh=false \
             -lock=false \
             -var="db_password=${{ secrets.DB_PASSWORD }}" \
             -var="environment=staging" \
-            -auto-approve || echo "Terraform had non-fatal issues (existing resources) - continuing for demo"
+            -var="frontend_s3_prefix=staging" \
+            -auto-approve > /tmp/tf-apply.log 2>&1
+          TF_CODE=$?
+          set -e
+          if [ $TF_CODE -ne 0 ]; then
+            echo "Terraform had non-fatal issues (existing resources) - continuing for demo"
+            echo "Last 10 lines of Terraform log:"
+            tail -10 /tmp/tf-apply.log
+          fi
 
       - name: Deploy Frontend to Staging
         uses: actions/download-artifact@v4
@@ -349,11 +387,20 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_BODY: |
-            Automated promotion PR after successful deployment to Staging.
+            ## 🚀 Automated Promotion PR: Staging → Production
 
-            - Review staging results
-            - Merge this PR (requires manual approval via GitHub Environment) to trigger Production deployment
-            - This is the final manual gate before Production
+            This PR was automatically created by the CI/CD pipeline after a successful deployment to the **Staging** environment.
+
+            ### What to do:
+            1. **Review the changes** (see the "Files changed" tab).
+            2. **Merge this PR**.
+               - Because this is a promotion to Production, merging will trigger the **Manual Approval Gate** job (it uses a GitHub Environment called `production` that requires explicit approval).
+               - Once you (or a reviewer) approve the deployment in the Actions UI / Environments, it will proceed to **Deploy to Production**.
+            3. Watch the **Actions** tab – the production-approval job will pause until approved.
+
+            This is the final manual gate before Production.
+
+            (Created by the deploy-staging job in `.github/workflows/deploy.yml`)
         run: |
           set +e
           if gh pr create \
@@ -438,13 +485,24 @@ jobs:
             -backend-config="encrypt=true" \
             -reconfigure
 
-          # Same note as Dev/Staging: expect some "already exists" due to IAM limits + prior state.
+          # Same note as Dev/Staging: expect "already exists" for global resources (S3/ALB/RDS/IAM/CW etc.)
+          # due to shared names + separate per-env state + limited deploy role perms.
+          # Frontend prefix and SSM paths are now env-aware so staging/prod instances pull correct artifacts/creds.
+          set +e
           terraform apply \
             -refresh=false \
             -lock=false \
             -var="db_password=${{ secrets.DB_PASSWORD }}" \
             -var="environment=production" \
-            -auto-approve || echo "Terraform had non-fatal issues (existing resources/IAM) - continuing"
+            -var="frontend_s3_prefix=production" \
+            -auto-approve > /tmp/tf-apply.log 2>&1
+          TF_CODE=$?
+          set -e
+          if [ $TF_CODE -ne 0 ]; then
+            echo "Terraform had non-fatal issues (existing resources/IAM) - continuing"
+            echo "Last 10 lines of Terraform log:"
+            tail -10 /tmp/tf-apply.log
+          fi
 
       - name: Deploy Frontend to Production
         uses: actions/download-artifact@v4

@@ -17,6 +17,12 @@ variable "frontend_builds_bucket" {
   default     = "ha-project-frontend-builds"
 }
 
+variable "frontend_s3_prefix" {
+  description = "S3 prefix under the bucket for this environment's frontend build (e.g. current for dev, staging, production)"
+  type        = string
+  default     = "current"
+}
+
 variable "environment" {
   description = "Environment name (development, staging, production)"
   type        = string
