@@ -557,6 +557,29 @@ The jobs are now connected in the Actions UI as: build → test → deploy-dev �
 
 This completes the 4-domain CI/CD + manual gate story for the presentation.
 
+**New error you just hit: "GitHub Actions is not permitted to create or approve pull requests (createPullRequest)"**
+
+This is a *repository setting* restriction (not a missing permission in the YAML — we already declare `pull-requests: write` at the top of deploy.yml).
+
+**Fix (one-time, in GitHub web UI):**
+
+1. Go directly to: https://github.com/timkamba2002/aws-ha-autoscaling-project/settings/actions
+   (or your repo → **Settings** → **Actions** → **General**)
+2. Scroll to **Workflow permissions**.
+3. Select **"Read and write permissions"**.
+4. **Check the box**: "Allow GitHub Actions to create and approve pull requests".
+5. Scroll to bottom and click **Save**.
+
+After changing, push a new commit to `development` to re-run with a fresh token that has the updated permissions.
+
+After saving, re-trigger the workflow (push another tiny commit to `development`).
+
+The workflow YAML now also uses the modern `GH_TOKEN` env var for the `gh` CLI calls and has much better error messages + comments pointing to exactly this setting.
+
+If you ever want to avoid the UI setting (e.g. in a stricter org repo), you can create a classic PAT with `repo` scope, store it as a secret named `WORKFLOW_PAT`, and change the two promotion steps to use `GH_TOKEN: ${{ secrets.WORKFLOW_PAT }}` instead of `${{ secrets.GITHUB_TOKEN }}`.
+
+The "Ensure promotion labels exist" steps + improved error handling in the latest commit should make future runs much clearer.
+
 **Monitoring via CloudWatch/SNS:**
 See the new section "9. Verifying Monitoring (CloudWatch + SNS)" I added to this file.
 
