@@ -1,4 +1,6 @@
 resource "aws_autoscaling_group" "asg" {
+  count = var.create_asg ? 1 : 0
+
   name             = "ha-project-asg"
   max_size         = 4
   min_size         = 2

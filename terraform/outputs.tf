@@ -5,12 +5,12 @@ output "alb_dns_name" {
 
 output "rds_endpoint" {
   description = "RDS endpoint (host:port) - use in backend EC2 user-data or SSM for DB_HOST"
-  value       = aws_db_instance.main.endpoint
+  value       = try(aws_db_instance.main[0].endpoint, "N/A (managed in development state)")
   sensitive   = true
 }
 
 output "frontend_s3_bucket" {
-  value = aws_s3_bucket.frontend_builds.id
+  value = try(aws_s3_bucket.frontend_builds[0].id, var.frontend_builds_bucket)
 }
 
 output "backend_cloudwatch_log_group" {
@@ -18,5 +18,5 @@ output "backend_cloudwatch_log_group" {
 }
 
 output "rds_identifier" {
-  value = aws_db_instance.main.identifier
+  value = try(aws_db_instance.main[0].identifier, "myapp-rds")
 }

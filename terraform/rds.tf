@@ -1,5 +1,7 @@
-# DB Subnet Group (shared across envs for this demo setup; creation will fail with AlreadyExists on non-dev applies due to separate state files)
+# DB Subnet Group (creation only in development; non-dev reuse via name)
 resource "aws_db_subnet_group" "main" {
+  count = var.environment == "development" ? 1 : 0
+
   name       = "main-db-subnet-group"
   subnet_ids = module.vpc.private_subnet_ids
 
@@ -12,6 +14,8 @@ resource "aws_db_subnet_group" "main" {
 
 # Security Group for RDS (MySQL - matches existing myapp-rds)
 resource "aws_security_group" "rds_sg" {
+  count = var.environment == "development" ? 1 : 0
+
   name        = "rds-security-group"
   description = "Allow MySQL from EC2 instances"
   vpc_id      = module.vpc.vpc_id
@@ -46,7 +50,14 @@ data "aws_ssm_parameter" "db_password" {
   with_decryption = true
 }
 
+data "aws_db_instance" "main" {
+  count                  = var.environment == "development" ? 0 : 1
+  db_instance_identifier = "myapp-rds"
+}
+
 resource "aws_db_instance" "main" {
+  count = var.environment == "development" ? 1 : 0
+
   identifier        = "myapp-rds"
   engine            = "mysql"
   engine_version    = "8.0.45"
@@ -57,8 +68,8 @@ resource "aws_db_instance" "main" {
   username = "admin"
   password = var.db_password != null ? var.db_password : try(data.aws_ssm_parameter.db_password[0].value, "")
 
-  vpc_security_group_ids = [aws_security_group.rds_sg.id]
-  db_subnet_group_name   = aws_db_subnet_group.main.name
+  vpc_security_group_ids = [aws_security_group.rds_sg[0].id]
+  db_subnet_group_name   = aws_db_subnet_group.main[0].name
 
   skip_final_snapshot     = true
   publicly_accessible     = false
@@ -75,7 +86,7 @@ resource "aws_db_instance" "main" {
 resource "aws_ssm_parameter" "db_host" {
   name      = "/ha-project/${var.environment}/db_host"
   type      = "String"
-  value     = aws_db_instance.main.endpoint
+  value     = try(aws_db_instance.main[0].endpoint, data.aws_db_instance.main[0].endpoint)
   overwrite = true # Prevents "ParameterAlreadyExists" errors
 
   tags = {

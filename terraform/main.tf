@@ -1,10 +1,12 @@
 module "vpc" {
   source = "./modules/vpc"
+  create = var.environment == "development"
 }
 
 module "security_groups" {
   source = "./modules/security-groups"
   vpc_id = module.vpc.vpc_id
+  create = var.environment == "development"
 }
 
 module "alb" {
@@ -12,6 +14,7 @@ module "alb" {
   public_subnet_ids = module.vpc.public_subnet_ids
   alb_sg_id         = module.security_groups.alb_sg_id
   vpc_id            = module.vpc.vpc_id
+  create            = var.environment == "development"
 }
 
 module "ec2" {
@@ -27,10 +30,14 @@ module "autoscaling" {
   private_subnet_ids = module.vpc.private_subnet_ids
   launch_template_id = module.ec2.launch_template_id
   target_group_arn   = module.alb.target_group_arn
+  create_asg         = var.environment == "development"
 }
 
 # S3 bucket for React frontend build artifacts (uploaded by GitHub Actions, downloaded by EC2 on boot)
+# Only created/managed in development state; staging/prod reuse the existing bucket (different prefix in user-data)
 resource "aws_s3_bucket" "frontend_builds" {
+  count = var.environment == "development" ? 1 : 0
+
   bucket = var.frontend_builds_bucket
 
   tags = {
@@ -41,7 +48,9 @@ resource "aws_s3_bucket" "frontend_builds" {
 }
 
 resource "aws_s3_bucket_public_access_block" "frontend_builds" {
-  bucket = aws_s3_bucket.frontend_builds.id
+  count = var.environment == "development" ? 1 : 0
+
+  bucket = aws_s3_bucket.frontend_builds[0].id
 
   block_public_acls       = true
   block_public_policy     = true
@@ -50,7 +59,9 @@ resource "aws_s3_bucket_public_access_block" "frontend_builds" {
 }
 
 resource "aws_s3_bucket_versioning" "frontend_builds" {
-  bucket = aws_s3_bucket.frontend_builds.id
+  count = var.environment == "development" ? 1 : 0
+
+  bucket = aws_s3_bucket.frontend_builds[0].id
   versioning_configuration {
     status = "Enabled"
   }
@@ -72,7 +83,7 @@ module "monitoring" {
 
   environment                      = var.environment
   backend_log_group_name           = "/aws/ec2/ha-project-${var.environment}-backend"
-  rds_instance_identifier          = aws_db_instance.main.identifier
+  rds_instance_identifier          = try(aws_db_instance.main[0].identifier, "myapp-rds")
   rds_cpu_threshold                = 80
   rds_free_storage_threshold_bytes = 5 * 1024 * 1024 * 1024 # 5 GB
   alarm_sns_topic_arn              = aws_sns_topic.alarms.arn
