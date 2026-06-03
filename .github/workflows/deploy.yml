@@ -210,22 +210,21 @@ jobs:
       # errors or accidental resets of source branches.
       - name: Create Pull Request to promote to staging
         if: github.ref == 'refs/heads/development'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_BODY: |
+            Automated promotion PR after successful build/test/deploy to Development.
+
+            - Review changes
+            - Merge this PR to trigger Staging deployment
+            - This enforces the manual approval step for staging
         run: |
           gh pr create \
             --base staging \
             --head development \
             --title "Promote: Development → Staging" \
-            --body "$(cat <<'EOP'
-Automated promotion PR after successful build/test/deploy to Development.
-
-- Review changes
-- Merge this PR to trigger Staging deployment
-- This enforces the manual approval step for staging
-EOP
-)" \
+            --body "$PR_BODY" \
             --label promotion,automated || echo "Note: PR may already exist for these branches (or creation skipped). Check GitHub PRs tab. This is OK for demo."
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # ===================== 4. DEPLOY TO STAGING =====================
   deploy-staging:
@@ -303,22 +302,21 @@ EOP
       # gh CLI used for safe cross-branch PR (head=staging, base=production).
       - name: Create Pull Request to promote to production
         if: github.ref == 'refs/heads/staging'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_BODY: |
+            Automated promotion PR after successful deployment to Staging.
+
+            - Review staging results
+            - Merge this PR (requires manual approval via GitHub Environment) to trigger Production deployment
+            - This is the final manual gate before Production
         run: |
           gh pr create \
             --base production \
             --head staging \
             --title "Promote: Staging → Production" \
-            --body "$(cat <<'EOP'
-Automated promotion PR after successful deployment to Staging.
-
-- Review staging results
-- Merge this PR (requires manual approval via GitHub Environment) to trigger Production deployment
-- This is the final manual gate before Production
-EOP
-)" \
+            --body "$PR_BODY" \
             --label promotion,automated || echo "Note: PR may already exist (or skipped). Check the Pull requests tab. Merge it (with approval) to promote."
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # FUTURE (Post-ECS Migration):
       # - This job will pull the container image digest from the Build stage
