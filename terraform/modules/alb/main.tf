@@ -1,4 +1,6 @@
 resource "aws_lb" "alb" {
+  count = var.create ? 1 : 0
+
   name               = "ha-project-alb"
   load_balancer_type = "application"
   security_groups    = [var.alb_sg_id]
@@ -10,6 +12,8 @@ resource "aws_lb" "alb" {
 }
 
 resource "aws_lb_target_group" "tg" {
+  count = var.create ? 1 : 0
+
   name     = "ha-project-tg"
   port     = 80
   protocol = "HTTP"
@@ -29,12 +33,25 @@ resource "aws_lb_target_group" "tg" {
 }
 
 resource "aws_lb_listener" "listener" {
-  load_balancer_arn = aws_lb.alb.arn
+  count = var.create ? 1 : 0
+
+  load_balancer_arn = aws_lb.alb[0].arn
   port              = 80
   protocol          = "HTTP"
 
   default_action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.tg.arn
+    target_group_arn = aws_lb_target_group.tg[0].arn
   }
+}
+
+# Data sources for reuse in non-dev envs
+data "aws_lb" "alb" {
+  count = var.create ? 0 : 1
+  name  = "ha-project-alb"
+}
+
+data "aws_lb_target_group" "tg" {
+  count = var.create ? 0 : 1
+  name  = "ha-project-tg"
 }

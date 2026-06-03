@@ -1,3 +1,3 @@
 output "asg_name" {
-  value = aws_autoscaling_group.asg.name
+  value = var.create_asg ? aws_autoscaling_group.asg[0].name : "ha-project-asg"
 }
