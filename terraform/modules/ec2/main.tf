@@ -10,11 +10,8 @@ resource "aws_iam_role" "ec2_role" {
     }]
   })
 
-  tags = {
-    Name        = "ha-project-ec2-frontend-role"
-    Environment = "development"
-    ManagedBy   = "terraform"
-  }
+  # Tags omitted to avoid requiring iam:TagRole permission on the GitHub OIDC deploy role.
+  # (The OIDC role has limited perms for security; creation of the EC2 role may still report AlreadyExists in non-dev env applies.)
 }
 
 resource "aws_iam_role_policy" "s3_frontend_read" {
@@ -51,9 +48,9 @@ resource "aws_iam_role_policy" "ssm_read_db_creds" {
         "ssm:GetParameters"
       ]
       Resource = [
-        "arn:aws:ssm:us-east-1:866934333672:parameter/ha-project/development/db_password",
-        "arn:aws:ssm:us-east-1:866934333672:parameter/ha-project/development/db_host",
-        "arn:aws:ssm:us-east-1:866934333672:parameter/ha-project/development/db_user"
+        "arn:aws:ssm:us-east-1:866934333672:parameter/ha-project/${var.environment}/db_password",
+        "arn:aws:ssm:us-east-1:866934333672:parameter/ha-project/${var.environment}/db_host",
+        "arn:aws:ssm:us-east-1:866934333672:parameter/ha-project/${var.environment}/db_user"
       ]
     }]
   })
@@ -78,7 +75,9 @@ resource "aws_launch_template" "lt" {
   }
 
   user_data = base64encode(templatefile("${path.module}/user-data.sh.tpl", {
-    frontend_bucket = var.frontend_bucket_name
+    frontend_bucket  = var.frontend_bucket_name
+    frontend_prefix  = var.frontend_s3_prefix
+    environment      = var.environment
   }))
 
   tag_specifications {
