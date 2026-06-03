@@ -162,28 +162,32 @@ data "aws_vpc" "main" {
 }
 
 data "aws_subnet" "public_a" {
-  count = var.create ? 0 : 1
+  count  = var.create ? 0 : 1
+  vpc_id = data.aws_vpc.main[0].id
   tags = {
     Name = "public-subnet-a"
   }
 }
 
 data "aws_subnet" "public_b" {
-  count = var.create ? 0 : 1
+  count  = var.create ? 0 : 1
+  vpc_id = data.aws_vpc.main[0].id
   tags = {
     Name = "public-subnet-b"
   }
 }
 
 data "aws_subnet" "private_a" {
-  count = var.create ? 0 : 1
+  count  = var.create ? 0 : 1
+  vpc_id = data.aws_vpc.main[0].id
   tags = {
     Name = "private-subnet-a"
   }
 }
 
 data "aws_subnet" "private_b" {
-  count = var.create ? 0 : 1
+  count  = var.create ? 0 : 1
+  vpc_id = data.aws_vpc.main[0].id
   tags = {
     Name = "private-subnet-b"
   }
@@ -191,14 +195,24 @@ data "aws_subnet" "private_b" {
 
 data "aws_internet_gateway" "main" {
   count = var.create ? 0 : 1
-  tags = {
-    Name = "ha-project-igw"
+  filter {
+    name   = "tag:Name"
+    values = ["ha-project-igw"]
+  }
+  filter {
+    name   = "attachment.vpc-id"
+    values = [data.aws_vpc.main[0].id]
   }
 }
 
 data "aws_nat_gateway" "main" {
   count = var.create ? 0 : 1
-  tags = {
-    Name = "ha-project-nat-gateway"
+  filter {
+    name   = "tag:Name"
+    values = ["ha-project-nat-gateway"]
+  }
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.main[0].id]
   }
 }
