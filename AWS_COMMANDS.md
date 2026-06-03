@@ -546,7 +546,14 @@ The yml now has (example for dev job):
 
 Same pattern for staging job (head=staging, base=production).
 
-Push this change. Then do a tiny commit/push to `development` (e.g. edit a comment or add a line in README) to trigger a full dev deploy + promotion PR creation. Watch the Actions run, then go to the repo's Pull requests tab to see the auto-created "Promote: Development → Staging" PR. Merge it (no code review needed for demo) to fire the staging deploy.
+Push this change. Then do a tiny commit/push to `development` (e.g. edit a comment or add a line in README) to trigger a full dev deploy + promotion PR creation. 
+
+**Important for first run after this change:**
+- The workflow now auto-creates the labels "promotion" and "automated" (via `gh label create ... || true`) before calling `gh pr create --label ...`. This fixes the "could not add label: 'promotion' not found" error you saw.
+- If an old "Promote: Development → Staging" PR already exists from previous attempts, close it first (or merge it), then re-trigger the dev deploy so a fresh one gets created cleanly.
+- Watch the Actions run (the graph should now show the full linear chain thanks to `needs:` wiring), then go to the repo's Pull requests tab to see the auto-created "Promote: Development → Staging" PR. Merge it (no code review needed for demo) to fire the staging deploy.
+
+The jobs are now connected in the Actions UI as: build → test → deploy-dev → deploy-staging → production-approval → deploy-prod (using `needs: [prev]` + `if: always() && ref == '...' ` so skipped jobs on a given branch don't break the visual flow).
 
 This completes the 4-domain CI/CD + manual gate story for the presentation.
 
