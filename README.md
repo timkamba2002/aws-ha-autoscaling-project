@@ -275,3 +275,5 @@ Cloud / DevOps Learning Project
 ---
 
 *Last updated: For presentation week – focusing on CI/CD promotion flow and honest status reporting.*
+
+<!-- test promotion flow 2026-06-03T13:42:22.5910275-04:00 -->
