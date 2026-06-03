@@ -47,21 +47,21 @@ data "aws_ssm_parameter" "db_password" {
 }
 
 resource "aws_db_instance" "main" {
-  identifier             = "myapp-rds"
-  engine                 = "mysql"
-  engine_version         = "8.0.45"
-  instance_class         = "db.t3.micro"
-  allocated_storage      = 20
+  identifier        = "myapp-rds"
+  engine            = "mysql"
+  engine_version    = "8.0.45"
+  instance_class    = "db.t3.micro"
+  allocated_storage = 20
 
-  db_name                = "myappdb"
-  username               = "admin"
-  password               = var.db_password != null ? var.db_password : try(data.aws_ssm_parameter.db_password[0].value, "")
+  db_name  = "myappdb"
+  username = "admin"
+  password = var.db_password != null ? var.db_password : try(data.aws_ssm_parameter.db_password[0].value, "")
 
   vpc_security_group_ids = [aws_security_group.rds_sg.id]
   db_subnet_group_name   = aws_db_subnet_group.main.name
 
-  skip_final_snapshot    = true
-  publicly_accessible    = false
+  skip_final_snapshot     = true
+  publicly_accessible     = false
   backup_retention_period = 7
 
   tags = {
@@ -76,7 +76,7 @@ resource "aws_ssm_parameter" "db_host" {
   name      = "/ha-project/${var.environment}/db_host"
   type      = "String"
   value     = aws_db_instance.main.endpoint
-  overwrite = true   # Prevents "ParameterAlreadyExists" errors
+  overwrite = true # Prevents "ParameterAlreadyExists" errors
 
   tags = {
     Environment = var.environment
@@ -88,7 +88,7 @@ resource "aws_ssm_parameter" "db_user" {
   name      = "/ha-project/${var.environment}/db_user"
   type      = "String"
   value     = "admin"
-  overwrite = true   # Prevents "ParameterAlreadyExists" errors on re-runs
+  overwrite = true # Prevents "ParameterAlreadyExists" errors on re-runs
 
   tags = {
     Environment = var.environment
