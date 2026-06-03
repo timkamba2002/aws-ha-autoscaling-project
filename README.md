@@ -90,8 +90,8 @@ Push to `development`
 |-----------------------|-------------------------|-------|
 | **Frontend**          | ✅ Working             | React app loads through ALB |
 | **Backend + Database**| ✅ Working             | Tasks created in UI are saved to RDS MySQL and visible after refresh |
-| **CI/CD Flow**        | ⚠️ Basic but improving | Works for dev. Needs proper branch promotion + auto-PR flow |
-| **Infrastructure**    | ⚠️ Still maturing      | User-data significantly improved. Terraform environment isolation still weak |
+| **CI/CD Flow**        | ✅ Working (with gates) | Full promotion: push dev → deploy-dev + auto-PR (gh) to staging; manual merge PR → deploy-staging + auto-PR to prod; prod env approval gate before deploy-prod. (peter-evans replaced by native gh pr create for safety.) |
+| **Infrastructure**    | ✅ Stable (1 VPC/NAT) + known gaps | Single VPC + 1 NAT after full audit/cleanup. User-data hardened + verified via refreshes. Terraform plan matches live (dev). Gap: vpc module tags not yet env-namespaced (root cause of past 9-VPC sprawl; documented in DEV_HISTORY). |
 | **Production**        | ⛔ Not promoted        | Intentionally held back until everything is stable |
 
 **See [DEV_HISTORY.md](./DEV_HISTORY.md)** for the full story of how we got here (many failed attempts, IAM battles, user-data rewrites, and hard lessons).

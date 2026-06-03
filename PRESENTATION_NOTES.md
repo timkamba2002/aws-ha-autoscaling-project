@@ -124,4 +124,23 @@ Possible tough question: *"Why isn't the full application working?"*
 - **You have a plan** → Show the Future Plans section.
 - **Real-world constraints** → IAM limitations are common in enterprise environments.
 
+## Demoing Monitoring (CloudWatch + SNS) & API Verification (for instructor review)
+
+**Monitoring confirmation (shows the Monitoring domain):**
+- In AWS Console or CLI: subscribe your email to the per-env SNS topic e.g. `development-ha-project-alarms` (arn:aws:sns:us-east-1:866934333672:development-ha-project-alarms)
+- List alarms: `aws cloudwatch describe-alarms --alarm-name-prefix development-rds --output table`
+- Trigger test notification: `aws cloudwatch set-alarm-state --alarm-name development-rds-cpu-utilization-high --state-value ALARM --state-reason "Manual test of monitoring pipeline"`
+- Watch for email from SNS (AWS Notifications). Then reset to OK.
+- Also visible in CloudWatch console > Alarms (RDS cpu-high, free-storage-low, connections-high wired to the SNS).
+
+**API test verification (proves full stack + Operations/Reliability):**
+- After any deploy or Instance Refresh, run `./scripts/verify-deployment.ps1` (or the one-liner).
+- The key command (PS): `(Invoke-WebRequest -Uri "http://ha-project-alb-1568483483.us-east-1.elb.amazonaws.com/api/tasks?userId=demo-user-123" -UseBasicParsing).Content.Substring(0,300)`
+- Successful output contains real JSON from RDS, e.g. `[{"id":10,"user_id":"demo-user-123","task":"gg",... "created_at":...}, ...]`
+- This proves: ALB healthy routing → backend (Node on refreshed instances, .env from SSM) → RDS MySQL persistence (tasks table with inserts).
+- Screenshot the JSON + the verify script's ASG table + target health table for your demo/portfolio.
+- Full details + expected output in [AWS_COMMANDS.md §10](AWS_COMMANDS.md#10-api-test-verification).
+
+Add these live runs + screenshots to your presentation deck / instructor handoff. They directly map to the 4-domain model (CI/CD+IaC, Security/Trivy already in Test job, Monitoring here, Operations via refresh/verify/cleanup story).
+
 Good luck with your presentation! You have a mature story to tell.

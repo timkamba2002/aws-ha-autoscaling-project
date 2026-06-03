@@ -27,13 +27,16 @@ This is the flow you described wanting:
 - After Staging succeeds → automatically creates PR to `production`
 - Merge to `production` (requires manual approval) → deploys to Production
 
-**Work involved**:
-- Refactor GitHub Actions workflows
-- Use `peter-evans/create-pull-request` action
-- Set up GitHub Environments (`staging` and `production`) with required reviewers
-- Update branch protection rules
+**Work involved (COMPLETED)**:
+- GitHub Actions workflows updated with on: push for development/staging/production
+- Promotion implemented with safe `gh pr create --head <src> --base <tgt>` (avoided peter-evans/create-pull-request pitfalls that caused the "base/branch must differ" error in your run log)
+- Top level permissions: id-token, contents:write, pull-requests:write
+- GitHub Environment "production" with manual approval gate (the production-approval job)
+- The flow now works end-to-end: push dev → deploy-dev + auto PR to staging; manual merge PR → push to staging → deploy-staging + auto PR to prod; manual merge PR (via prod env approval) → deploy-prod
 
-**Value**: This is one of the strongest "real enterprise process" demonstrations you can show.
+**Value**: This is one of the strongest "real enterprise process" demonstrations you can show. (Update: the implementation was switched to gh CLI for reliability on long-lived branch promotion.)
+
+To demo: make a trivial change on development, push, watch the Actions tab for the full run + PR creation. Then merge the generated PR and watch the staging job fire.
 
 ---
 

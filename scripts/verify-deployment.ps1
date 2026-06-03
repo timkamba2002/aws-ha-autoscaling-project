@@ -27,10 +27,11 @@ aws elbv2 describe-target-health `
 
 # 4. Test public API
 Write-Host "`n4. Test Public API (replace ALB DNS if needed):" -ForegroundColor Yellow
-Write-Host 'curl -s "http://ha-project-alb-1568483483.us-east-1.elb.amazonaws.com/api/tasks?userId=demo-user-123" | head -c 300'
+Write-Host 'PowerShell: (Invoke-WebRequest -Uri "http://ha-project-alb-1568483483.us-east-1.elb.amazonaws.com/api/tasks?userId=demo-user-123" -UseBasicParsing).Content.Substring(0,300)'
+Write-Host 'If curl.exe available: curl.exe -s "http://ha-project-alb-1568483483.us-east-1.elb.amazonaws.com/api/tasks?userId=demo-user-123" | Out-String | ForEach-Object { $_.Substring(0, [Math]::Min(300, $_.Length)) }'
 
 Write-Host "`n=== Instructions ===" -ForegroundColor Cyan
 Write-Host "1. Run the Instance Refresh command above (from PowerShell) to stabilize the fleet with latest user-data."
 Write-Host "2. Wait for refresh to complete (check AWS console or describe-auto-scaling-groups)."
 Write-Host "3. Verify both instances bootstrap cleanly using AWS_COMMANDS.md."
-Write-Host "4. Test the live site in browser."
+Write-Host "4. Test the live site in browser (use the PowerShell command printed above for the API test)."

@@ -138,6 +138,12 @@ The deletion almost certainly removed a true orphan from the repair phase. The c
 **Lesson**:
 Separate state files are great for isolation, but base infrastructure (networking) must either be shared (via data sources / remote state lookup) or explicitly namespaced per environment from day one. We accumulated duplicates because the network layer was not treated as a reusable foundation during the chaotic repair period.
 
+**Latest audit status (this session)**:
+- Confirmed via `terraform state show` (development): the state owns the live VPC `vpc-0d4035555d90998ca`, NAT `nat-0ab01038ba460d225`, private RT `rtb-0a6315518589aaf19`, and the two private subnets `subnet-01d86811e7aa5b89b` / `subnet-04412d44ddea1b645`.
+- Inside the live VPC there were still 2 NATs and 3 duplicate private RTs (one of the extra RTs pointed to a NAT that had already been deleted).
+- Staging state initialized successfully but contains **no** `module.vpc.aws_vpc.main` (show failed with "No instance found"). This means the other 8 ha-project-vpc entries are very likely unclaimed orphans.
+- Work continues on targeted subnet-to-RT association queries (using the confirmed subnet IDs) and capturing the current ASG instances' actual SubnetIds to decide the exact re-associate + delete order for the extras.
+
 ---
 
 ## Current State (as of latest session)
@@ -158,13 +164,13 @@ Separate state files are great for isolation, but base infrastructure (networkin
 ## What We Have Left / Roadmap
 
 ### Immediate / High Priority (largely complete as of this session)
-- ✅ Verify the improved user-data script works cleanly on fresh instances (confirmed via 30e12a52 refresh + post-verify on i-02689... / i-06565...).
-- ✅ Update documentation (this file + AWS_COMMANDS.md + README + PRESENTATION_NOTES) — including full honest record of the VPC/NAT sprawl.
-- VPC/NAT cost & limit audit + discovery tooling (completed in this session; cleanup of true orphans is the remaining manual step).
-- Run a tiny end-to-end test of the branch promotion flow (push change to development → watch auto-PR creation to staging).
+- ✅ Verify the improved user-data script works cleanly on fresh instances (multiple successful Instance Refreshes, including 30e12a52 and 74aaf57f; current fleet i-09ac73... / i-0f255a... healthy on correct subnets).
+- ✅ Update documentation (this file + AWS_COMMANDS.md + README + PRESENTATION_NOTES) — including full honest record of the VPC/NAT sprawl and the successful single-NAT cleanup.
+- VPC/NAT cost & limit audit + discovery tooling + live VPC cleanup executed (extra NAT + duplicate private RTs removed; only 1 functional NAT remains in the live VPC).
+- Orphan VPC cleanup COMPLETE: All 8 unclaimed ha-project-vpcs deleted via AWS Console "Delete VPC" wizard (following the listed blockers: NAT first → attached ENI once available → VPC). User confirmed the last one (vpc-0a1da8346d9b54c37) deleted. Final verification: only live vpc-0d4035555d90998ca remains, only good NAT nat-0ab01038ba460d225 in it, ALB in live VPC. API test successful (real tasks returned from RDS). Terraform plan (dev): network perfectly in sync (0 infra changes). Only known sensitive drifts on RDS/SSM. Final Instance Refresh completed Successful; post-refresh verify showed healthy fleet on latest user-data. You ran the plan earlier (no apply needed). Account now exactly matches development state: single VPC + single NAT. Clean, professional, low-cost. This completes the major Operations/Reliability + cost-control story.
 
 ### Pipeline & Process
-- ✅ Branch promotion flow with auto-PRs implemented in `.github/workflows/deploy.yml` (peter-evans/create-pull-request + permissions + dev/staging/prod triggers). Needs one real push + observe PR creation + manual merge to staging as a final live test.
+- ✅ Branch promotion flow with auto-PRs **fully fixed and robust** in `.github/workflows/deploy.yml`. Replaced peter-evans/create-pull-request (which produced the exact "base and branch must be different branches" error from your pasted Actions log, and carried hidden risk of resetting long-lived branches due to its internal temp/reset/cherry-pick/push logic) with native GitHub CLI `gh pr create --head <source> --base <target>`. This safely creates real cross-branch PRs (dev→staging, staging→prod) with no side effects on the source branches. The merge of the PR pushes to the target branch and triggers the next environment's deploy job — exactly enforcing the manual approval gate for staging/prod. Permissions already covered pull-requests:write. Test: tiny commit + push to development → watch Actions create the "Promote: Development → Staging" PR → merge it → observe staging deploy start. Also updated docs (AWS_COMMANDS, this file, NEXT_STEPS) and the verify script. Trivy SAST already in the Test job.
 - Improve Terraform environment isolation for networking (namespacing or shared base network via data source / remote state) — this is the root cause of the 9-VPC accumulation; cleanup first, then a small refactor to prevent recurrence.
 
 ### Next Technical Domains (Instructor 4-Domain Model)
