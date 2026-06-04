@@ -353,7 +353,7 @@ jobs:
           # Register a new task definition revision with the promoted image + DB secrets from SSM
           # (secrets injected by ECS at launch using the ha-project-ecs-execution role + ssm:Get* policy)
           # The service (defined in TF) uses capacity_provider_strategy FARGATE_SPOT so no launch_type here.
-          aws ecs register-task-definition \
+          TASK_DEF_ARN=$(aws ecs register-task-definition \
             --family ha-backend \
             --network-mode awsvpc \
             --requires-compatibilities FARGATE \
@@ -385,9 +385,9 @@ jobs:
                   }
                 }
               }
-            ]' > /tmp/taskdef.json
-
-          TASK_DEF_ARN=$(aws ecs register-task-definition --cli-input-json file:///tmp/taskdef.json --query 'taskDefinition.taskDefinitionArn' --output text)
+            ]' \
+            --query 'taskDefinition.taskDefinitionArn' \
+            --output text)
 
           echo "Registered task definition: $TASK_DEF_ARN"
 
