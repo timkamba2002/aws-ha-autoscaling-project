@@ -229,11 +229,26 @@ jobs:
 
       - name: Trigger ASG Refresh
         run: |
+          echo "=== Current ASG status before refresh ==="
+          aws autoscaling describe-auto-scaling-groups \
+            --auto-scaling-group-names ha-project-asg \
+            --query "AutoScalingGroups[0].{Min:min_size, Desired:desired_capacity, Max:max_size, Instances:Instances[?LifecycleState=='InService'].[InstanceId,HealthStatus]}" \
+            --output table || true
+
+          echo ""
+          echo "=== Checking for in-progress refreshes ==="
+          aws autoscaling describe-instance-refreshes \
+            --auto-scaling-group-name ha-project-asg \
+            --query "InstanceRefreshes[?Status=='InProgress'].[InstanceRefreshId,Status,StartTime,PercentageComplete]" \
+            --output table || true
+
+          echo ""
+          echo "=== Starting Instance Refresh ==="
           aws autoscaling start-instance-refresh \
             --auto-scaling-group-name ha-project-asg \
             --strategy Rolling \
-            --preferences MinHealthyPercentage=0,InstanceWarmup=60 \
-            --region ${{ env.AWS_REGION }} || true
+            --preferences MinHealthyPercentage=100,InstanceWarmup=180 \
+            --region ${{ env.AWS_REGION }} || echo "⚠️  Could not start new refresh (one may already be InProgress). Check status and start manually if needed. Continuing for demo..."
 
       # Ensure labels exist (gh --label requires pre-existing labels; || true so first run creates them)
       - name: Ensure promotion labels exist
@@ -341,11 +356,29 @@ jobs:
 
       - name: Trigger ASG Refresh for Staging
         run: |
+          echo "=== Current ASG status before refresh ==="
+          aws autoscaling describe-auto-scaling-groups \
+            --auto-scaling-group-names ha-project-asg \
+            --query "AutoScalingGroups[0].{Min:min_size, Desired:desired_capacity, Max:max_size, Instances:Instances[?LifecycleState=='InService'].[InstanceId,HealthStatus]}" \
+            --output table || true
+
+          echo ""
+          echo "=== Checking for in-progress refreshes ==="
+          aws autoscaling describe-instance-refreshes \
+            --auto-scaling-group-name ha-project-asg \
+            --query "InstanceRefreshes[?Status=='InProgress'].[InstanceRefreshId,Status,StartTime,PercentageComplete]" \
+            --output table || true
+
+          echo ""
+          echo "=== Starting Instance Refresh ==="
+          # MinHealthyPercentage=100 + longer warmup = much safer rollout with 2-instance ASG.
+          # The ASG will launch replacements (using max capacity temporarily), wait for new ones
+          # to be fully healthy (including warmup + ALB health checks), then terminate old ones.
           aws autoscaling start-instance-refresh \
             --auto-scaling-group-name ha-project-asg \
             --strategy Rolling \
-            --preferences MinHealthyPercentage=50,InstanceWarmup=60 \
-            --region ${{ env.AWS_REGION }} || true
+            --preferences MinHealthyPercentage=100,InstanceWarmup=180 \
+            --region ${{ env.AWS_REGION }} || echo "⚠️  Could not start new refresh (one may already be InProgress). Check status and start manually if needed. Continuing for demo..."
 
       - name: Demo Status - Staging Complete
         run: |
@@ -498,11 +531,26 @@ jobs:
 
       - name: Trigger ASG Refresh for Production
         run: |
+          echo "=== Current ASG status before refresh ==="
+          aws autoscaling describe-auto-scaling-groups \
+            --auto-scaling-group-names ha-project-asg \
+            --query "AutoScalingGroups[0].{Min:min_size, Desired:desired_capacity, Max:max_size, Instances:Instances[?LifecycleState=='InService'].[InstanceId,HealthStatus]}" \
+            --output table || true
+
+          echo ""
+          echo "=== Checking for in-progress refreshes ==="
+          aws autoscaling describe-instance-refreshes \
+            --auto-scaling-group-name ha-project-asg \
+            --query "InstanceRefreshes[?Status=='InProgress'].[InstanceRefreshId,Status,StartTime,PercentageComplete]" \
+            --output table || true
+
+          echo ""
+          echo "=== Starting Instance Refresh ==="
           aws autoscaling start-instance-refresh \
             --auto-scaling-group-name ha-project-asg \
             --strategy Rolling \
-            --preferences MinHealthyPercentage=50,InstanceWarmup=60 \
-            --region ${{ env.AWS_REGION }} || true
+            --preferences MinHealthyPercentage=100,InstanceWarmup=180 \
+            --region ${{ env.AWS_REGION }} || echo "⚠️  Could not start new refresh (one may already be InProgress). Check status and start manually if needed. Continuing for demo..."
 
       - name: Demo Status - Production (If Reached)
         run: |
