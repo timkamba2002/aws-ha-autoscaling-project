@@ -56,9 +56,15 @@ resource "aws_iam_role_policy" "ssm_read_db_creds" {
         "ssm:GetParameters"
       ]
       Resource = [
-        "arn:aws:ssm:us-east-1:866934333672:parameter/ha-project/${var.environment}/db_password",
-        "arn:aws:ssm:us-east-1:866934333672:parameter/ha-project/${var.environment}/db_host",
-        "arn:aws:ssm:us-east-1:866934333672:parameter/ha-project/${var.environment}/db_user"
+        "arn:aws:ssm:us-east-1:866934333672:parameter/ha-project/development/db_password",
+        "arn:aws:ssm:us-east-1:866934333672:parameter/ha-project/development/db_host",
+        "arn:aws:ssm:us-east-1:866934333672:parameter/ha-project/development/db_user",
+        "arn:aws:ssm:us-east-1:866934333672:parameter/ha-project/staging/db_password",
+        "arn:aws:ssm:us-east-1:866934333672:parameter/ha-project/staging/db_host",
+        "arn:aws:ssm:us-east-1:866934333672:parameter/ha-project/staging/db_user",
+        "arn:aws:ssm:us-east-1:866934333672:parameter/ha-project/production/db_password",
+        "arn:aws:ssm:us-east-1:866934333672:parameter/ha-project/production/db_host",
+        "arn:aws:ssm:us-east-1:866934333672:parameter/ha-project/production/db_user"
       ]
     }]
   })
