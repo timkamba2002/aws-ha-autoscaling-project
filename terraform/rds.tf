@@ -86,7 +86,7 @@ resource "aws_db_instance" "main" {
 resource "aws_ssm_parameter" "db_host" {
   name      = "/ha-project/${var.environment}/db_host"
   type      = "String"
-  value     = try(aws_db_instance.main[0].endpoint, data.aws_db_instance.main[0].endpoint)
+  value     = split(":", try(aws_db_instance.main[0].endpoint, data.aws_db_instance.main[0].endpoint))[0]
   overwrite = true # Prevents "ParameterAlreadyExists" errors
 
   tags = {

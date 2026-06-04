@@ -115,10 +115,19 @@ else
   echo "DB credentials retrieved successfully"
 fi
 
+# RDS endpoint from SSM includes port (e.g. host:3306). Strip it for mysql2 pool (host + separate port).
+DB_HOST_ONLY="$DB_HOST"
+DB_PORT=3306
+if [[ "$DB_HOST" == *:* ]]; then
+  DB_HOST_ONLY="$${DB_HOST%%:*}"
+  DB_PORT="$${DB_HOST##*:}"
+fi
+
 # Create .env for backend
 cat > /opt/ha-backend/.env << EOF
 PORT=3000
-DB_HOST=$DB_HOST
+DB_HOST=$DB_HOST_ONLY
+DB_PORT=$DB_PORT
 DB_USER=$DB_USER
 DB_PASSWORD=$DB_PASSWORD
 DB_NAME=myappdb
