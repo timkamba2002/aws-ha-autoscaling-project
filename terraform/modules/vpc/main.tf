@@ -156,9 +156,7 @@ resource "aws_route_table_association" "private_b" {
 # Data sources for lookup when create=false (staging/prod reuse the resources created by development state)
 data "aws_vpc" "main" {
   count = var.create ? 0 : 1
-  tags = {
-    Name = "ha-project-vpc"
-  }
+  id    = var.vpc_id != "" ? var.vpc_id : "vpc-0d4035555d90998ca"
 }
 
 data "aws_subnet" "public_a" {

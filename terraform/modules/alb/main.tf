@@ -47,11 +47,13 @@ resource "aws_lb_listener" "listener" {
 
 # Data sources for reuse in non-dev envs
 data "aws_lb" "alb" {
-  count = var.create ? 0 : 1
-  name  = "ha-project-alb"
+  count  = var.create ? 0 : 1
+  name   = "ha-project-alb"
+  vpc_id = var.vpc_id
 }
 
 data "aws_lb_target_group" "tg" {
-  count = var.create ? 0 : 1
-  name  = "ha-project-tg"
+  count  = var.create ? 0 : 1
+  name   = "ha-project-tg"
+  vpc_id = var.vpc_id
 }

@@ -1,11 +1,12 @@
 module "vpc" {
   source = "./modules/vpc"
   create = var.environment == "development"
+  vpc_id = var.environment == "development" ? "" : "vpc-0d4035555d90998ca"
 }
 
 module "security_groups" {
   source = "./modules/security-groups"
-  vpc_id = module.vpc.vpc_id
+  vpc_id = var.environment == "development" ? module.vpc.vpc_id : "vpc-0d4035555d90998ca"
   create = var.environment == "development"
 }
 
@@ -13,7 +14,7 @@ module "alb" {
   source            = "./modules/alb"
   public_subnet_ids = module.vpc.public_subnet_ids
   alb_sg_id         = module.security_groups.alb_sg_id
-  vpc_id            = module.vpc.vpc_id
+  vpc_id            = var.environment == "development" ? module.vpc.vpc_id : "vpc-0d4035555d90998ca"
   create            = var.environment == "development"
 }
 

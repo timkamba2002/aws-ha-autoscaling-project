@@ -54,11 +54,27 @@ resource "aws_security_group" "ec2_sg" {
 
 # Data sources for non-dev envs
 data "aws_security_group" "alb_sg" {
-  count = var.create ? 0 : 1
-  name  = "alb-sg"
+  count  = var.create ? 0 : 1
+  vpc_id = var.vpc_id
+  filter {
+    name   = "group-name"
+    values = ["alb-sg"]
+  }
+  filter {
+    name   = "description"
+    values = ["Allow HTTP traffic from the internet"]
+  }
 }
 
 data "aws_security_group" "ec2_sg" {
-  count = var.create ? 0 : 1
-  name  = "ec2-sg"
+  count  = var.create ? 0 : 1
+  vpc_id = var.vpc_id
+  filter {
+    name   = "group-name"
+    values = ["ec2-sg"]
+  }
+  filter {
+    name   = "description"
+    values = ["Allow traffic only from ALB"]
+  }
 }
