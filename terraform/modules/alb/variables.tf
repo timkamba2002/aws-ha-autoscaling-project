@@ -7,7 +7,8 @@ variable "alb_sg_id" {
 }
 
 variable "vpc_id" {
-  type = string
+  description = "VPC ID (required when create=true for the target group; passed but unused when create=false)"
+  type        = string
 }
 
 variable "create" {
