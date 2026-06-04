@@ -49,9 +49,13 @@ resource "aws_lb_listener" "listener" {
 data "aws_lb" "alb" {
   count = var.create ? 0 : 1
   name  = "ha-project-alb"
+  # Note: vpc_id is NOT a valid input for data "aws_lb" (it is an output attribute).
+  # We lookup by name (which is unique per AWS account). Since only the live VPC remains,
+  # this will correctly find the one created by dev.
 }
 
 data "aws_lb_target_group" "tg" {
   count = var.create ? 0 : 1
   name  = "ha-project-tg"
+  # vpc_id not valid here either; name lookup is sufficient.
 }
