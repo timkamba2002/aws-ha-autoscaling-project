@@ -17,14 +17,18 @@ resource "aws_security_group" "rds_sg" {
   count = var.environment == "development" ? 1 : 0
 
   name        = "rds-security-group"
-  description = "Allow MySQL from EC2 instances"
+  description = "Allow MySQL from EC2 instances and ECS Fargate tasks (for backend on containers)"
   vpc_id      = module.vpc.vpc_id
 
   ingress {
-    from_port       = 3306
-    to_port         = 3306
-    protocol        = "tcp"
-    security_groups = [module.security_groups.ec2_sg_id]
+    from_port   = 3306
+    to_port     = 3306
+    protocol    = "tcp"
+    security_groups = concat(
+      [module.security_groups.ec2_sg_id],
+      # Allow the ECS Fargate tasks (backend moved to containers on Fargate Spot)
+      var.environment == "development" ? [aws_security_group.ecs_backend[0].id] : []
+    )
   }
 
   egress {
