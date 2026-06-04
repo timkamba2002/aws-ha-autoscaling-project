@@ -21,10 +21,15 @@ resource "aws_security_group" "rds_sg" {
   vpc_id      = module.vpc.vpc_id
 
   ingress {
-    from_port       = 3306
-    to_port         = 3306
-    protocol        = "tcp"
-    security_groups = [module.security_groups.ec2_sg_id]
+    from_port   = 3306
+    to_port     = 3306
+    protocol    = "tcp"
+    security_groups = concat(
+      [module.security_groups.ec2_sg_id],
+      # Allow the ECS Fargate tasks (backend moved to containers on Fargate Spot)
+      # Note: aws_security_group.ecs_backend is defined in main.tf (dev only)
+      var.environment == "development" ? [aws_security_group.ecs_backend[0].id] : []
+    )
   }
 
   egress {
@@ -37,6 +42,12 @@ resource "aws_security_group" "rds_sg" {
   tags = {
     Name        = "rds-security-group"
     Environment = var.environment
+  }
+
+  # Ignore description changes (in case it drifts) to avoid unnecessary SG replacement.
+  # We only want to update the ingress rules in-place.
+  lifecycle {
+    ignore_changes = [description]
   }
 }
 

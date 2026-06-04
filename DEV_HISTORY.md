@@ -330,6 +330,8 @@ This, together with the VPC/NAT sprawl cleanup, completes the "IaC maturity + Op
 
 ## 2026-06 (final milestone): Fargate Spot + Full Containerization + Observability (CW + Prometheus path)
 
+**Post-integration backend breakage fix**: After moving the backend to ECS Fargate Spot, the RDS security group only allowed ingress from the old EC2 SG (not the new `ha-backend-ecs-sg`). This caused DB connection failures inside the containers → `/health` returned 503 → ALB marked targets unhealthy (3 unhealthy) → "backend broken" / "couldn't find the requested content" errors on the web app, even though 2 tasks were running and FARGATE_SPOT was visible. CloudWatch alarms and logs were present. Fixed by updating `rds.tf` ingress to also allow the ECS SG (using concat for dev-only). Re-apply TF for dev to update the live RDS SG. This was the missing piece for reliable ECS integration and prevents recurrence.
+
 **User request**: "i'll run fargate spot because I don't want to manage it and how do i view cloudwatch dashboard and see the metrics and logging? and let's add prometheus + grafana on top of the cloudwatch also I wan't to learn about that and I don't know what to measure in my monitoring and logging so give me best ideas that apply to this project and ignore splunk for now and everything else sounds good lets get started"
 
 **What was delivered**:
