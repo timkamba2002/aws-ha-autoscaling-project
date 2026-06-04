@@ -288,4 +288,73 @@ Documenting this journey honestly is more valuable than pretending everything wo
 
 ---
 
-*Last major update: June 2026 (post Instance Refresh 30e12a52 + 9-VPC/NAT audit + docs refresh)*
+## Challenge: Staging `terraform plan` Wanted to Destroy the Entire Live Stack + Missing Per-Env SSM Params
+
+**Date/context**: Immediately after console deletion of the 8 orphan VPCs (leaving only the single live `vpc-0d4035555d90998ca` + its NAT), running `terraform plan -var="environment=staging"` (after correct backend init) produced:
+
+- 33 destroys + 4 creates + -/+ replaces
+- Every live resource listed under `[0]` "because index [0] is out of range for count" (the `count = var.environment == "development" ? 1 : 0` paths)
+- Final error: `Error: reading SSM Parameter (/ha-project/staging/db_password): couldn't find resource` (data source on rds.tf:47)
+
+**What the pasted output showed**:
+- `aws_db_subnet_group.main[0]`, all three `aws_s3_bucket* frontend_builds[0]`, `aws_security_group.rds_sg[0]`
+- `module.vpc.*[0]`, `module.security_groups.*[0]`, `module.alb.*[0]`, `module.autoscaling.asg[0]`, `module.ec2.*[0]` (role/profile + two policies)
+- SNS and CloudWatch log group/stream as -/+ (name forces replacement, which is correct per-env behavior)
+- The LT user_data diff showed the ENV/FRONTEND_PREFIX already being templated correctly for staging in the proposed new version.
+
+**Root cause** (two parts):
+1. **State pollution persisted even after the orphan VPCs were gone in AWS**: The *staging* remote state key (`ha-project/staging/terraform.tfstate`) still contained resource addresses for the network/SG/ALB/ASG/IAM/S3/db_subnet_group/rds_sg that the dev state had originally created (and that were later cleaned externally or by prior partial applies). When `create=false` for staging, Terraform saw "these addresses exist in my state but count=0 now → plan destroy".
+2. **Per-environment SSM parameters were never created for staging** (and dev `db_user` was also missing until the dev plan proposed creating the resource). The unconditional (per-env) `data "aws_ssm_parameter" "db_password"` + the `aws_ssm_parameter.db_*` resources in rds.tf expected `/ha-project/staging/...` to exist.
+
+Secondary code issues surfaced:
+- The `aws_iam_role_policy.ssm_read_db_creds` (managed only by dev state) had its Resource list templated with `${var.environment}` at creation time → only contained the three development ARNs. Any staged instances (after LT update + refresh) would get AccessDenied when their user-data tried `aws ssm get-parameter .../staging/db_*`.
+- `db_user` SSM was created via the resource (not pre-seeded), causing drift noise on every plan until the parameter existed.
+
+**Fix steps executed**:
+- Always `terraform init -backend-config="key=ha-project/staging/terraform.tfstate" -reconfigure` on every env switch (the root cause of "why did my plan look at dev resources when I passed staging var").
+- Pre-created the three staging SSM params (and the missing dev db_user) via `aws ssm put-parameter` (with `MSYS_NO_PATHCONV=1` to protect leading `/` in Git Bash/WSL, using the live RDS endpoint for host, "admin"/password copied from dev).
+- `terraform state list` (after correct init) + targeted `state rm` for any remaining stale addresses (in practice the prior repair + this init showed a much smaller polluted set; the big destroy list was from the moment before hygiene).
+- Fixed the policy in [modules/ec2/main.tf](/mnt/c/Users/Timothy Kamba/aws-ha-autoscaling-project/terraform/modules/ec2/main.tf) to explicitly list all 9 ARNs (dev+staging+prod) for the three params. Since only the dev state creates the policy, a dev apply updates the live role policy in-place.
+- Re-ran correct init + `plan -var="environment=staging"` → **Plan: 0 to add, 2 to change, 0 to destroy** (exactly the expected: per-env SSM tag drift + LT user_data update for staging ENV/prefix). No live infra touched.
+- `apply` for staging (published new LT version with staging bootstrap), then switched to dev backend, applied the policy fix + SSM tag cleanup. Both env plans now report "No changes. Your infrastructure matches the configuration."
+- Confirmed via `aws iam get-role-policy` that the SSMReadDBCredentials policy now contains paths for all three environments.
+
+**Lesson**:
+- `count` + data-source patterns for "dev owns shared foundation, others read" are powerful but require strict state hygiene + init discipline on every context switch. External deletes (console) + prior state pollution = terrifying plans until you `state rm` the ghosts and pre-seed the read-only data sources (SSM in this case).
+- Shared mutable resources (the EC2 IAM role/policy, the Launch Template name prefix, the single ASG) must have their configuration authored to be *environment-agnostic* or explicitly multi-env from the owning state. Templating the policy with the current `environment` var was a subtle scoping bug that only appears at promotion time.
+- Pre-creating the per-env SSM params (or making the data source gracefully default + have the resource creation be the source of truth) removes the "first apply for a new env blows up on data source read" experience.
+
+This, together with the VPC/NAT sprawl cleanup, completes the "IaC maturity + Operations under fire" story for the portfolio.
+
+---
+
+## 2026-06 (final milestone): Fargate Spot + Full Containerization + Observability (CW + Prometheus path)
+
+**User request**: "i'll run fargate spot because I don't want to manage it and how do i view cloudwatch dashboard and see the metrics and logging? and let's add prometheus + grafana on top of the cloudwatch also I wan't to learn about that and I don't know what to measure in my monitoring and logging so give me best ideas that apply to this project and ignore splunk for now and everything else sounds good lets get started"
+
+**What was delivered**:
+- Updated `terraform/main.tf`: ECS service now uses `capacity_provider_strategy` with `FARGATE_SPOT` (no launch_type). Full side-by-side ALB integration: `aws_lb_target_group` (ip type) + `aws_lb_listener_rule` (priority 100 for `/api/*` + `/api`) so API traffic goes to Fargate Spot tasks while the React static frontend continues to be served by the existing EC2 ASG + nginx (perfect gradual migration + keeps the Instance Refresh reliability demo alive for the frontend layer).
+- ECS task definition now injects DB_* via `secrets[]` + SSM valueFrom (SecureString). Added dedicated `aws_iam_role_policy.ecs_ssm_read` (least privilege, all 9 ARNs like the EC2 policy).
+- ECS SG now has ingress 3000 from the ALB SG.
+- Added ECS-specific CW metric alarms (CPU/Mem high, RunningTaskCount low) + `aws_cloudwatch_dashboard.ha_project` (IaC starter dashboard with ECS + ALB + RDS widgets + Logs Insights error query).
+- `backend/`: added `prom-client`, full instrumentation in server.js (default metrics + HTTP histogram/counter with labels, business `tasks_*_total`, DB query histogram + error counter by operation, auto middleware, `/metrics` endpoint returning prometheus text format, timedQuery helper used by all routes).
+- `backend/Dockerfile`: apk add wget (for healthcheck) + will pick up new dep on build.
+- `.github/workflows/deploy.yml`: updated the dev "Deploy Backend to ECS (Fargate Spot)" step to register task def with the secrets + DB_PORT so promoted images keep working. Updated notes.
+- `ECS_ECR_MIGRATION_GUIDE.md`: completely expanded with:
+  - Exact numbered step-by-step for running Fargate Spot (SSM prep, apply commands, verification in ECS console, how to see Spot in task details, rollback).
+  - Precise "How to view CloudWatch dashboards / metrics / logging" (console navigation, the IaC dashboard name, example Logs Insights queries, Container Insights views, alarms + SNS).
+  - Long "Best project-specific metrics & logging ideas" section: golden signals (latency/traffic/errors/saturation) + business (tasks created/fetched), DB, reliability during refreshes + Spot churn, security (Trivy trends), example SLOs.
+  - Full "Adding Prometheus + Grafana on top of CloudWatch" learning section: why both, what the prom-client gives you, quick local docker way to play with /metrics + Grafana, AMP + AMG production path, sidecar scrape idea, dual datasource in Grafana (CW + Prom), learning points for presentation.
+- Minor: README.md status table updated to "Done", pipeline note refreshed.
+- No Splunk work (per explicit request).
+
+**Result**: The project now has a complete, demonstrable story across all four requested domains:
+1. CI/CD + IaC (Terraform conditional + data sources + remote per-env state, GitHub OIDC + promotion + auto PRs + Trivy fs + image + SARIF + per-stage vuln sections).
+2. Security (Trivy, IAM least-privilege expanded for multi-env + ECS, non-root containers, immutable-ish ECR, SG).
+3. Monitoring/Logging (CW Logs + Container Insights + alarms + IaC dashboard + SNS + full Prom instrumentation + guide for Grafana on top + tailored metrics).
+4. Operations/Reliability (Instance Refresh with MinHealthy 100% + less-noisy logic, safe backend credential handling, side-by-side Fargate rollout without breaking the site, healthchecks everywhere).
+
+The user can now run the apply for dev (Fargate Spot), push, watch the pipeline ship a real image to the Spot service, then walk through the CloudWatch dashboard + /metrics + the guide for the learning piece.
+
+This completes the requested scope.
+

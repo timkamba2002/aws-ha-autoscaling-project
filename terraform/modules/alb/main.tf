@@ -45,6 +45,13 @@ resource "aws_lb_listener" "listener" {
   }
 }
 
+# Data source for listener when reusing existing ALB (staging/prod states)
+data "aws_lb_listener" "existing" {
+  count             = var.create ? 0 : 1
+  load_balancer_arn = data.aws_lb.alb[0].arn
+  port              = 80
+}
+
 # Data sources for reuse in non-dev envs
 data "aws_lb" "alb" {
   count = var.create ? 0 : 1

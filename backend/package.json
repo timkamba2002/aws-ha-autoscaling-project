@@ -14,7 +14,8 @@
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "winston": "^3.11.0",
-    "winston-cloudwatch": "^3.1.1"
+    "winston-cloudwatch": "^3.1.1",
+    "prom-client": "^15.1.0"
   },
   "engines": {
     "node": ">=18"

@@ -194,9 +194,9 @@ The current pipeline is already quite mature for a learning project. Planned imp
 | Priority | Initiative | Description | Skills Gained | Status |
 |----------|------------|-------------|---------------|--------|
 | **1** | **Containerization** | Dockerize the Node.js backend and push images to Amazon ECR | Docker, ECR, Immutable deployments | Planned |
-| **2** | **ECS Fargate Migration** | Move backend from EC2 to ECS Fargate (serverless containers) | ECS, Fargate, Task Definitions, Service discovery | Planned |
+| **2** | **ECS Fargate Migration** | Move backend from EC2 to ECS Fargate + Fargate Spot (no management) + ALB path routing for /api while keeping EC2 for static frontend | ECS, Fargate, FARGATE_SPOT capacity_provider, ECR, Trivy image scan, ALB listener rules | Done (dev) |
 | **3** | **Secrets Management** | Migrate from SSM Parameter Store to AWS Secrets Manager | Secrets Manager, IAM least privilege | Planned |
-| **4** | **Observability** | Add CloudWatch Alarms, dashboards, and SNS notifications for failures | CloudWatch, Monitoring, Alerting | Planned |
+| **4** | **Observability** | CloudWatch (Container Insights + Logs + Alarms + IaC Dashboard) + Prometheus instrumentation (/metrics with custom business/DB/HTTP metrics via prom-client) + full guide for viewing + adding Grafana on top (hybrid with CW datasource) + project-specific metrics/SLO ideas | CloudWatch, Container Insights, Prometheus, Grafana, AMP/AMG, structured logging, golden signals + business metrics | Done (dev) |
 | **5** | **Terraform Maturity** | Refactor into reusable modules + introduce Terraform workspaces | Advanced IaC, state management | Planned |
 
 ### Medium-Term Enhancements (Next 2–3 Months)
