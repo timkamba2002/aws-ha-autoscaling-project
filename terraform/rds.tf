@@ -17,7 +17,7 @@ resource "aws_security_group" "rds_sg" {
   count = var.environment == "development" ? 1 : 0
 
   name        = "rds-security-group"
-  description = "Allow MySQL from EC2 instances and ECS Fargate tasks (for backend on containers)"
+  description = "Allow MySQL from EC2 instances"
   vpc_id      = module.vpc.vpc_id
 
   ingress {
@@ -44,8 +44,8 @@ resource "aws_security_group" "rds_sg" {
     Environment = var.environment
   }
 
-  # The description was updated for clarity when adding ECS support.
-  # Ignore description changes to avoid unnecessary SG replacement in future.
+  # Ignore description changes (in case it drifts) to avoid unnecessary SG replacement.
+  # We only want to update the ingress rules in-place.
   lifecycle {
     ignore_changes = [description]
   }
