@@ -62,8 +62,15 @@ name: CI/CD Pipeline - HA To-Do App (Presentation Demo)
 #   (The PR body itself now contains these numbered steps for the person who opens it.)
 #
 # JOB DEPENDENCY GRAPH (for nice linear visual in Actions UI):
-# build → test → deploy-dev → deploy-staging → production-approval → deploy-prod
+# build → test → build-containers
+#                  ↓
+#               deploy-dev → deploy-staging → production-approval → deploy-prod
 # - Connected with `needs: [previous]` on each job.
+# - build-containers produces the backend-image artifact (used by all deploys for immutable promotion).
+# - Later jobs use `if: always() && github.ref == 'refs/heads/xxx'` so that
+#   skipped jobs (e.g. deploy-dev when the run is for a staging push) do not
+#   block the chain. This makes the graph always show the full intended flow
+#   with the appropriate jobs executing or appearing as "skipped" per branch.
 # - Later jobs use `if: always() && github.ref == 'refs/heads/xxx'` so that
 #   skipped jobs (e.g. deploy-dev when the run is for a staging push) do not
 #   block the chain. This makes the graph always show the full intended flow
@@ -268,7 +275,7 @@ jobs:
   # ===================== 3. DEPLOY TO DEVELOPMENT =====================
   deploy-dev:
     name: 3. Deploy to Development
-    needs: test
+    needs: [test, build-containers]
     if: github.ref == 'refs/heads/development'
     runs-on: ubuntu-latest
     steps:
@@ -472,7 +479,7 @@ jobs:
   # ===================== 4. DEPLOY TO STAGING =====================
   deploy-staging:
     name: 4. Deploy to Staging
-    needs: [test, deploy-dev]
+    needs: [test, deploy-dev, build-containers]
     if: always() && github.ref == 'refs/heads/staging'
     runs-on: ubuntu-latest
     steps:
@@ -669,7 +676,7 @@ jobs:
   # ===================== 6. DEPLOY TO PRODUCTION =====================
   deploy-prod:
     name: 6. Deploy to Production
-    needs: [production-approval]
+    needs: [production-approval, build-containers]
     if: always() && github.ref == 'refs/heads/production'
     runs-on: ubuntu-latest
     steps:
