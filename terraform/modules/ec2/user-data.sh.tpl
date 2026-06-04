@@ -208,7 +208,32 @@ fi
 
 echo "Nginx status: $(systemctl is-active nginx || true)"
 
-# Final health file
+# Wait for backend service to be active before declaring the instance fully healthy.
+# This helps the ALB / Instance Refresh not count the instance as healthy too early.
+echo "Waiting for backend service to become active..."
+for i in {1..24}; do
+  STATUS=$(systemctl is-active ha-backend || true)
+  if [ "$STATUS" = "active" ]; then
+    echo "Backend service is active"
+    break
+  fi
+  echo "Backend not active yet (attempt $i/24, status=$STATUS)..."
+  sleep 5
+done
+
+# One more quick check that the backend port responds
+echo "Checking backend port responsiveness..."
+for i in {1..6}; do
+  if curl -s --max-time 3 http://127.0.0.1:3000/ > /dev/null 2>&1 || \
+     curl -s --max-time 3 http://127.0.0.1:3000/api/ > /dev/null 2>&1 ; then
+    echo "Backend port is responding"
+    break
+  fi
+  echo "Backend port not responding yet..."
+  sleep 5
+done
+
+# Final health file - now the instance should be truly ready
 echo "OK $(date -Iseconds)" > /var/www/html/health
 
 echo "=== Full Stack Bootstrap Complete - $(date) ==="

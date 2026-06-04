@@ -15,7 +15,7 @@ Write-Host "`n2. To trigger Instance Refresh (rolls out latest user-data to all 
 Write-Host 'aws autoscaling start-instance-refresh `'
 Write-Host '  --auto-scaling-group-name ha-project-asg `'
 Write-Host '  --strategy Rolling `'
-Write-Host '  --preferences MinHealthyPercentage=50,InstanceWarmup=60 `'
+Write-Host '  --preferences MinHealthyPercentage=100,InstanceWarmup=180 `'
 Write-Host '  --region us-east-1'
 
 # 3. Check Target Group Health
