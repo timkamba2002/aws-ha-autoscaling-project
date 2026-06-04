@@ -38,3 +38,20 @@ aws autoscaling start-instance-refresh `
 '@
 
 Write-Host "`nAfter starting, poll status with the verify script or repeat the describe-instance-refreshes command."
+
+Write-Host "`n=== Extra: Launch Template Version the ASG is using ===" -ForegroundColor Cyan
+aws autoscaling describe-auto-scaling-groups `
+  --auto-scaling-group-names ha-project-asg `
+  --query "AutoScalingGroups[0].LaunchTemplate" `
+  --output table
+
+Write-Host "`n=== Recent Launch Template Versions (to see if staging apply created a new one) ===" -ForegroundColor Cyan
+$ltName = "ha-project-lt20260521185755080700000002"
+aws ec2 describe-launch-template-versions `
+  --launch-template-name $ltName `
+  --max-items 5 `
+  --query "LaunchTemplateVersions[*].[VersionNumber,CreateTime]" `
+  --output table
+
+Write-Host "`n=== To poll results of a previous SSM send-command (replace <COMMAND_ID>) ===" -ForegroundColor Yellow
+Write-Host 'aws ssm list-command-invocations --command-id <COMMAND_ID> --details --query "CommandInvocations[0].CommandPlugins[0].{Status:Status, Output:Output}" --output text'
