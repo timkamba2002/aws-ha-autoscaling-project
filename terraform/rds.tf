@@ -27,6 +27,7 @@ resource "aws_security_group" "rds_sg" {
     security_groups = concat(
       [module.security_groups.ec2_sg_id],
       # Allow the ECS Fargate tasks (backend moved to containers on Fargate Spot)
+      # Note: aws_security_group.ecs_backend is defined in main.tf (dev only)
       var.environment == "development" ? [aws_security_group.ecs_backend[0].id] : []
     )
   }
@@ -41,6 +42,12 @@ resource "aws_security_group" "rds_sg" {
   tags = {
     Name        = "rds-security-group"
     Environment = var.environment
+  }
+
+  # The description was updated for clarity when adding ECS support.
+  # Ignore description changes to avoid unnecessary SG replacement in future.
+  lifecycle {
+    ignore_changes = [description]
   }
 }
 

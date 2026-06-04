@@ -275,6 +275,13 @@ resource "aws_ecs_service" "backend" {
     Environment = var.environment
     ManagedBy   = "terraform"
   }
+
+  # Ignore task_definition changes because the GitHub Actions pipeline
+  # registers new revisions with updated container images (via ECR digest promotion).
+  # Terraform should not fight the CI/CD updates to the service.
+  lifecycle {
+    ignore_changes = [task_definition]
+  }
 }
 
 # Security group for ECS tasks (allow outbound to RDS, etc.)
