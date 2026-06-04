@@ -119,8 +119,8 @@ fi
 DB_HOST_ONLY="$DB_HOST"
 DB_PORT=3306
 if [[ "$DB_HOST" == *:* ]]; then
-  DB_HOST_ONLY="${DB_HOST%%:*}"
-  DB_PORT="${DB_HOST##*:}"
+  DB_HOST_ONLY="$${DB_HOST%%:*}"
+  DB_PORT="$${DB_HOST##*:}"
 fi
 
 # Create .env for backend
