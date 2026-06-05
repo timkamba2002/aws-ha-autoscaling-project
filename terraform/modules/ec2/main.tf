@@ -16,14 +16,14 @@ resource "aws_iam_role" "ec2_role" {
   # Other env applies (staging/prod) use the existing role by name in the launch template.
   # ignore_changes on tags prevents UntagRole/TagRole calls that the limited OIDC deploy role cannot perform.
   lifecycle {
-    ignore_changes = [tags]
+    ignore_changes = [tags, assume_role_policy]
   }
 }
 
 resource "aws_iam_role_policy" "s3_frontend_read" {
   count = var.environment == "development" ? 1 : 0
   name  = "S3FrontendBuildRead"
-  role  = "ha-project-ec2-frontend-role"
+  role  = aws_iam_role.ec2_role[0].name
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -45,7 +45,7 @@ resource "aws_iam_role_policy" "s3_frontend_read" {
 resource "aws_iam_role_policy" "ssm_read_db_creds" {
   count = var.environment == "development" ? 1 : 0
   name  = "SSMReadDBCredentials"
-  role  = "ha-project-ec2-frontend-role"
+  role  = aws_iam_role.ec2_role[0].name
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -70,10 +70,80 @@ resource "aws_iam_role_policy" "ssm_read_db_creds" {
   })
 }
 
+# Allow the EC2 instances to query ECS for running tasks in the cluster.
+# This is needed so we can discover the current private IPs of Fargate tasks
+# (e.g. from an EC2 bastion via SSM) to test /metrics, health, etc. without
+# exposing tasks publicly.
+resource "aws_iam_role_policy" "ecs_read_tasks" {
+  count = var.environment == "development" ? 1 : 0
+  name  = "ECSReadTasks"
+  # Use the role resource reference (when count=1) instead of hardcoded name.
+  # This improves Terraform dependency graph and reduces drift / delete surprises.
+  role  = aws_iam_role.ec2_role[0].name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "ecs:ListTasks",
+        "ecs:DescribeTasks",
+        "ecs:ListContainerInstances",
+        "ecs:DescribeContainerInstances"
+      ]
+      Resource = [
+        "arn:aws:ecs:us-east-1:866934333672:cluster/ha-project-cluster",
+        "arn:aws:ecs:us-east-1:866934333672:container-instance/ha-project-cluster/*",
+        "arn:aws:ecs:us-east-1:866934333672:task/ha-project-cluster/*"
+      ]
+    }]
+  })
+}
+
+# Allow the EC2 instances (and anything running on them, like the test Grafana container)
+# to read CloudWatch metrics and logs. Needed for the Grafana CloudWatch datasource
+# in the disposable Prometheus/Grafana test setup on the bastion EC2.
+resource "aws_iam_role_policy" "cloudwatch_and_logs_read" {
+  count = var.environment == "development" ? 1 : 0
+  name  = "CloudWatchAndLogsRead"
+  # Use the role resource reference (when count=1) instead of hardcoded name.
+  # This improves Terraform dependency graph and reduces drift / delete surprises.
+  role  = aws_iam_role.ec2_role[0].name
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "cloudwatch:Describe*",
+          "cloudwatch:Get*",
+          "cloudwatch:List*"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:Describe*",
+          "logs:Get*",
+          "logs:List*",
+          "logs:StartQuery",
+          "logs:StopQuery",
+          "logs:GetQueryResults",
+          "logs:FilterLogEvents"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 resource "aws_iam_instance_profile" "ec2_profile" {
   count = var.environment == "development" ? 1 : 0
   name  = "ha-project-ec2-frontend-profile"
-  role  = "ha-project-ec2-frontend-role"
+  # Use the role resource reference instead of hardcoded name for consistency.
+  role  = aws_iam_role.ec2_role[0].name
 }
 
 resource "aws_launch_template" "lt" {

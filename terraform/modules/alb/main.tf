@@ -1,10 +1,14 @@
 resource "aws_lb" "alb" {
   count = var.create ? 1 : 0
 
-  name               = "ha-project-alb"
-  load_balancer_type = "application"
-  security_groups    = [var.alb_sg_id]
-  subnets            = var.public_subnet_ids
+  name                       = "ha-project-alb"
+  load_balancer_type         = "application"
+  security_groups            = [var.alb_sg_id]
+  subnets                    = var.public_subnet_ids
+  drop_invalid_header_fields = true   # Addresses CKV_AWS_131 (ALB drops invalid HTTP headers)
+
+  # deletion_protection = true would address CKV_AWS_150 but is annoying for demos/student projects
+  # (you'd have to disable it before terraform destroy). Left false for now.
 
   tags = {
     Name = "ha-project-alb"
@@ -37,7 +41,7 @@ resource "aws_lb_listener" "listener" {
 
   load_balancer_arn = aws_lb.alb[0].arn
   port              = 80
-  protocol          = "HTTP"
+  protocol          = "HTTP"   # CKV_AWS_2 (HTTPS) left as HTTP for demo simplicity (no ACM cert needed). In real prod you would add a HTTPS listener + ACM cert + redirect.
 
   default_action {
     type             = "forward"

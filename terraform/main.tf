@@ -231,7 +231,7 @@ resource "aws_iam_role_policy" "ecs_ssm_read" {
 resource "aws_cloudwatch_log_group" "ecs_backend" {
   count             = var.environment == "development" ? 1 : 0
   name              = "/ecs/ha-backend"
-  retention_in_days = 30
+  retention_in_days = 90   # Raised to address CKV_AWS_338 (Checkov "at least 1 year" for finance-grade; 90d is practical for demo)
 }
 
 # ECS Service for the backend using Fargate Spot (cost-optimized, AWS-managed, no EC2 to patch/scale)
@@ -297,6 +297,15 @@ resource "aws_security_group" "ecs_backend" {
     to_port         = 3000
     protocol        = "tcp"
     security_groups = [module.security_groups.alb_sg_id]
+  }
+
+  # Allow from EC2 instances too (for testing /metrics, debugging, etc. from the ASG hosts which are in the same VPC)
+  ingress {
+    description     = "Allow from EC2 ASG instances (for internal testing of /metrics etc.)"
+    from_port       = 3000
+    to_port         = 3000
+    protocol        = "tcp"
+    security_groups = [module.security_groups.ec2_sg_id]
   }
 
   egress {

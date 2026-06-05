@@ -277,9 +277,14 @@ jobs:
       - name: Checkov Summary (Policy as Code)
         run: |
           echo "## 🛡️ IaC Security - Checkov (Policy-as-Code)" >> $GITHUB_STEP_SUMMARY
-          echo "Scanned Terraform configuration for misconfigurations (e.g. overly permissive security groups, missing encryption, public buckets)." >> $GITHUB_STEP_SUMMARY
-          echo "This follows Amazon/Google DevSecOps practice of 'Policy as Code' for infrastructure." >> $GITHUB_STEP_SUMMARY
-          echo "See job logs for details. In production this would be a hard gate." >> $GITHUB_STEP_SUMMARY
+          echo "Scanned Terraform configuration for misconfigurations." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Note:** The job stays green because \`soft_fail: true\` (demo mode)." >> $GITHUB_STEP_SUMMARY
+          echo "The findings you saw (CKV_AWS_*) are real issues Checkov detected — this is the tool working as intended." >> $GITHUB_STEP_SUMMARY
+          echo "See the 'Build & Scan Containers' job logs for the full list + explanations." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "This follows Amazon/Google DevSecOps practice of 'Policy as Code'." >> $GITHUB_STEP_SUMMARY
+          echo "In real enterprise + finance setups you would set \`soft_fail: false\` (or use \`hard_fail_on: HIGH\`) so findings become a hard gate." >> $GITHUB_STEP_SUMMARY
 
       - name: Push Backend Image to ECR (immutable digest for promotion)
         run: |
