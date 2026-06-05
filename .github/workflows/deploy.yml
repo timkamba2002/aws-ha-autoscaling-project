@@ -858,6 +858,11 @@ jobs:
   #   - Official GitHub Action maintained, easy SARIF/artifact integration path
   #   - Nuclei is excellent for template-driven API vuln scanning / known CVEs but less "full web app" DAST out of box
   # In real enterprise (Amazon/Google + finance): fail on HIGH/CRITICAL, upload SARIF, schedule + post-deploy, authenticated scans.
+  #
+  # Note on artifact: The ZAP action defaults to uploading reports as artifact named "zap_scan".
+  # We override with `artifact_name: zap-baseline-report-dev` to avoid "The artifact name zap_scan is not valid" errors
+  # (and to have a descriptive name). The action handles the upload internally; we removed our manual duplicate upload step
+  # to prevent "already exists" failures. The locate step remains for debugging file presence in logs.
   dast-dev:
     name: DAST - OWASP ZAP Baseline (Development)
     needs: deploy-dev
@@ -865,16 +870,15 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      issues: write            # The ZAP action can create issues for reports (we have disabled it below with allow_issue_writing: false, but the capability is declared)
-      security-events: write   # future-proof for SARIF DAST upload
+      security-events: write   # future-proof for SARIF DAST upload (if we ever enable SARIF output from ZAP)
     steps:
       - name: OWASP ZAP Baseline Scan (active scan vs live ALB)
         uses: zaproxy/action-baseline@v0.12.0
         with:
           target: 'http://${{ needs.deploy-dev.outputs.alb_dns }}'
           fail_action: false           # Demo-friendly: do not fail the job on findings.
-          allow_issue_writing: false   # Prevent the action from auto-creating/updating a GitHub Issue with the scan report (the action does this by default using the GitHub API).
-                                       # We already upload the HTML report as a downloadable artifact instead. This avoids spamming issues on frequent dev pushes.
+          allow_issue_writing: false   # Prevent the action from auto-creating/updating a GitHub Issue with the scan report.
+          artifact_name: zap-baseline-report-dev  # Override the default 'zap_scan' (which was causing "artifact name not valid" error). The action will upload the ZAP reports (HTML etc.) under this name.
           cmd_options: "-I"            # Ignore some informational issues for cleaner demo output
 
       - name: Locate ZAP report (action writes to workspace root)
@@ -885,18 +889,9 @@ jobs:
           find . -maxdepth 2 -type f \( -name "*zap*" -o -name "*report*.html" -o -name "report_html*" \) 2>/dev/null | head -10 || true
           echo "=== End locate ==="
 
-      - name: Upload ZAP Report Artifact (portfolio evidence)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: zap-baseline-report-dev
-          path: |
-            report_html.html
-            zap-report.html
-            **/*zap*.html
-            **/*report*.html
-          retention-days: 14
-          if-no-files-found: warn
+      # Note: Artifact upload is now handled automatically by the ZAP action itself (see artifact_name input above).
+      # This avoids duplicate upload attempts and the previous "zap_scan is not valid" error.
+      # The report will appear in the workflow run's Artifacts as "zap-baseline-report-dev".
 
       - name: DAST Summary for Pipeline
         if: always()
@@ -905,7 +900,7 @@ jobs:
           echo "**Target:** http://${{ needs.deploy-dev.outputs.alb_dns }} (HTTP ALB :80)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "This is a basic active scan for OWASP Top 10 issues against the live ALB (post-deploy)." >> $GITHUB_STEP_SUMMARY
-          echo "ZAP HTML report uploaded as artifact 'zap-baseline-report-dev' (visible in this run's Artifacts)." >> $GITHUB_STEP_SUMMARY
+          echo "ZAP HTML report uploaded automatically by the ZAP action as artifact 'zap-baseline-report-dev' (visible in this run's Artifacts)." >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Layered security in this pipeline (Amazon/Google + light finance simulation):" >> $GITHUB_STEP_SUMMARY
           echo "- SAST + container: Trivy (fs + image, per-stage re-scan, SARIF to Security tab)" >> $GITHUB_STEP_SUMMARY
