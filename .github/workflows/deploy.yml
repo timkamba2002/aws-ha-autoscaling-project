@@ -865,14 +865,17 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      issues: write            # The ZAP action can create issues for reports (we have disabled it below with allow_issue_writing: false, but the capability is declared)
       security-events: write   # future-proof for SARIF DAST upload
     steps:
       - name: OWASP ZAP Baseline Scan (active scan vs live ALB)
         uses: zaproxy/action-baseline@v0.12.0
         with:
           target: 'http://${{ needs.deploy-dev.outputs.alb_dns }}'
-          fail_action: false   # Demo-friendly: report only. In real use: true + rules_file for custom policy.
-          cmd_options: "-I"    # Ignore some informational issues for cleaner demo output
+          fail_action: false           # Demo-friendly: do not fail the job on findings.
+          allow_issue_writing: false   # Prevent the action from auto-creating/updating a GitHub Issue with the scan report (the action does this by default using the GitHub API).
+                                       # We already upload the HTML report as a downloadable artifact instead. This avoids spamming issues on frequent dev pushes.
+          cmd_options: "-I"            # Ignore some informational issues for cleaner demo output
 
       - name: Locate ZAP report (action writes to workspace root)
         if: always()
