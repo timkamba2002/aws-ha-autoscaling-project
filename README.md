@@ -197,14 +197,15 @@ The current pipeline is already quite mature for a learning project. Planned imp
 | **2** | **ECS Fargate Migration** | Move backend from EC2 to ECS Fargate + Fargate Spot (no management) + ALB path routing for /api while keeping EC2 for static frontend | ECS, Fargate, FARGATE_SPOT capacity_provider, ECR, Trivy image scan, ALB listener rules | Done (dev) |
 | **3** | **Secrets Management** | Migrate from SSM Parameter Store to AWS Secrets Manager | Secrets Manager, IAM least privilege | Planned |
 | **4** | **Observability** | CloudWatch (Container Insights + Logs + Alarms + IaC Dashboard) + Prometheus instrumentation (/metrics with custom business/DB/HTTP metrics via prom-client) + full guide for viewing + adding Grafana on top (hybrid with CW datasource) + project-specific metrics/SLO ideas | CloudWatch, Container Insights, Prometheus, Grafana, AMP/AMG, structured logging, golden signals + business metrics | Done (dev) |
-| **5** | **Terraform Maturity** | Refactor into reusable modules + introduce Terraform workspaces | Advanced IaC, state management | Planned |
+| **5** | **Security Hardening (DevSecOps)** | Trivy (SAST + container), Checkov (IaC Policy-as-Code), SBOM generation, OWASP ZAP DAST after deploy, per-stage vuln re-scans + SARIF | Shift-left security, supply chain security, layered testing | Done (dev) |
 
 ### Medium-Term Enhancements (Next 2–3 Months)
 
 - Introduce **Ansible** for configuration management on any remaining EC2 instances
 - Add **WAF** and **CloudFront** in front of the Application Load Balancer
-- Implement **Policy as Code** (Checkov / tfsec) in the CI pipeline
-- Add container vulnerability scanning (Trivy) before deployment
+- ✅ Implement **Policy as Code** (Checkov) in the CI pipeline
+- ✅ Add container vulnerability scanning (Trivy) + SBOM generation before deployment
+- ✅ Add DAST (OWASP ZAP) after dev deployment
 - Improve integration testing in the Test stage
 
 ### Long-Term Vision

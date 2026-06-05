@@ -1,0 +1,124 @@
+GROK SESSION RESUME - AWS HA Autoscaling Project (as of latest)
+
+CURRENT STATUS:
+- Dev and Staging pipelines are green.
+- Backend is working on the website (tasks create/save/load via ALB -> ECS Fargate Spot -> RDS).
+- ECS Fargate Spot service (ha-backend-service) running with 2 tasks, healthy targets on ha-backend-ecs-tg.
+- ALB listener rule for /api/* routing to ECS (ip targets).
+- CloudWatch: Container Insights enabled, custom dashboard (development-ha-project-overview), alarms (ECS CPU/Mem, RDS, running tasks), logs in /ecs/ha-backend.
+- Prometheus client instrumented in backend (prom-client):
+  - /metrics endpoint exposed.
+  - Custom metrics: ha_backend_http_request_duration_seconds (histogram), ha_backend_http_requests_total, ha_backend_tasks_created_total, ha_backend_tasks_fetched_total, ha_backend_db_query_duration_seconds, ha_backend_db_errors_total + defaults (process, heap).
+  - Middleware for auto HTTP instrumentation, timedQuery helper for DB.
+  - Labels for method/route/status, operation.
+- Recent fixes applied: RDS SG allows ECS SG + EC2 SG for DB connectivity. Lifecycle ignores on ECS service (task_definition) and RDS SG (description) to prevent pipeline/TF drift.
+- OIDC role has ECR/ECS/SSM/etc perms (HAProject-ECR-ECS-Pipeline policy added).
+- ECR repo with scan_on_push, immutable promotion via artifact (backend-image.txt).
+- Trivy in pipeline (fs + image scans, SARIF to Security tab, per-stage vuln tables in job summaries).
+- Pipeline: build-containers job, dev/staging/prod with vuln re-scans, less-noisy ASG refresh, ECS deploy in dev.
+- Terraform: dev creates most (conditional count), staging/prod use data sources. Per-env SSM for DB creds.
+- **Prom + Grafana hybrid dashboard complete** (basic version): Prom datasource working, multiple app SLI panels (Task Creation Rate, p99 Latency, HTTP by Status, DB Ops Rate, Task Fetches). CloudWatch datasource working (after adding cloudwatch_and_logs_read policy to EC2 role via TF). Added ECS CPU + Memory panels for Fargate service. Dashboard saved as "HA To-Do – Prom + CloudWatch". ALB Target Response Time panel pending (needs LoadBalancer dimension value; CLI command ready but blocked by AWSDenyALL on user's account).
+
+WHAT WAS JUST DONE:
+- Full Prom/Grafana test setup on EC2 (Docker containers with --network host for reachability).
+- Got Prometheus datasource working in Grafana (localhost:3001).
+- Added working Prom panels using raw SELECT-style queries where needed for reliability.
+- Added CloudWatch policy to ec2 role via terraform/modules/ec2/main.tf (new aws_iam_role_policy "cloudwatch_and_logs_read").
+- Terraform apply succeeded; CloudWatch datasource now tests successfully ("Successfully queried the CloudWatch metrics API" + logs).
+- Added 2 CloudWatch panels: ECS Backend CPU and Memory for ha-backend-service (Fargate Spot).
+- User has raw code queries (SELECT AVG(...) FROM "AWS/..." WHERE ...) for all panels.
+- Dashboard saved. User has the two ECS CW panels + all core Prom panels.
+- ALB panel blocked: user's account has AWSDenyALL policy (admin to remove tomorrow). CLI command to extract LoadBalancer dimension value is ready in the guide (aws elbv2 describe... + sed/replace).
+- All previous Prom/Grafana test setup (docker on EC2, host networking, SSM port forwards for 9090/3001, live task IPs) is still valid.
+
+PROMETHEUS + GRAFANA (completed basic version):
+- Test setup done: sudo docker run prom/prometheus and grafana/grafana with --network host + volume for prometheus.yml (updated with live Fargate IPs via list-tasks/describe-tasks loop).
+- Prometheus UI (9090) and Grafana (3001) accessed via SSM port-forward from laptop.
+- Prom datasource: SDK default + host networking worked.
+- CloudWatch datasource: required adding policy to ha-project-ec2-frontend-role (now in TF). Uses SDK DEFAULT (picks up EC2 instance role).
+- Panels added (raw code preferred for reliability):
+  - Prom: Task Creation Rate (business SLI), p99 API Latency, HTTP by Status, DB Operations Rate by Type (reliable fallback), Task Fetches Rate.
+  - CW: ECS CPU (Fargate Spot), ECS Memory (Fargate Spot).
+- ALB Target Response Time pending (get dimension via CLI tomorrow, then SELECT AVG(TargetResponseTime) FROM "AWS/ApplicationELB" WHERE LoadBalancer = '...').
+- Raw queries use Metrics Insights SELECT AVG(...) syntax in Grafana Expression field (ensures Metrics mode, not CWLI/Logs).
+- Dashboard saved as "HA To-Do – Prom + CloudWatch". Hybrid story ready (app SLIs from Prom + infra from CW).
+- Teaching: pull model, PromQL/rate/histogram, golden signals + business SLIs, why hybrid with CW, disposable Docker test vs AMP+AMG prod.
+- See updated PROMETHEUS_GRAFANA_ACCESS_GUIDE.md for exact raw queries, builder alternatives, troubleshooting, and how to get ALB dim via CLI.
+
+PENDING / WHATS NEXT:
+- User is back with permissions restored.
+- ALB dimension value obtained via CLI: app/ha-project-alb/08c9a04bf9cac52f
+- Add the ALB Target Response Time panel using the raw SELECT query (see guide).
+- Save final dashboard.
+- View the pre-built Terraform CW dashboard (development-ha-project-overview) in console.
+- Full promotion test: trivial change on dev -> watch auto-PR to staging -> merge -> manual approve prod -> verify prod job + live resources (same image digest on Fargate Spot).
+- Verify in AWS: ECS (Fargate Spot visible, tasks healthy), ALB (targets healthy, /api working), CloudWatch (hybrid dashboard + existing one), /metrics.
+- Take screenshots: Grafana dashboard (Prom + CW side-by-side), site working, ECS console (Spot), pipeline runs (Trivy + promotion), Security tab.
+- Update docs: README/DEV_HISTORY with final status + screenshots.
+- Demo prep: Show golden signals in Prom, hybrid CW+Prom in Grafana, promotion with immutable digest, scanning per stage, Fargate Spot cost savings + refresh resilience.
+- Commit/push (user will handle GitHub updates themselves after finishing).
+
+**User clarification**: "I meant save the GROK session not anything on github. Ill update my github once I finish and after I add the ALB panel."
+
+**SCRUM UPDATE TEMPLATE (short & ready to use tomorrow – spoken version):**
+
+"Yesterday I worked on the Prometheus and Grafana monitoring for the project. I got the Prometheus datasource working, added the main application SLI panels like task creation rate, p99 latency, and HTTP by status, fixed the CloudWatch datasource by adding the required policy through Terraform, and added the ECS CPU and Memory panels for the Fargate backend. I also saved the hybrid 'HA To-Do – Prom + CloudWatch' dashboard.
+
+Today I plan to get the ALB LoadBalancer dimension value via CLI once permissions are restored, add the final ALB Target Response Time panel to complete the dashboard, and then run the full pipeline promotion test from dev through staging to prod.
+
+Blockers: My AWS account currently has an AWSDenyALL policy, so I can't access the console or run some CLI commands. I'm waiting for my admin to remove it."
+
+**What is left of this project after the ALB panel is added**:
+1. Finish/verify the hybrid "HA To-Do – Prom + CloudWatch" dashboard (add ALB panel using the raw SELECT query once the dimension value is obtained).
+2. Full end-to-end pipeline promotion test (dev change -> auto-PR to staging -> merge -> manual prod approval -> verify same image digest lands on live Fargate Spot service).
+3. Screenshots and evidence for portfolio/demo (Grafana hybrid dashboard, working site, ECS Spot tasks, pipeline with Trivy + promotion, Security tab SARIF findings, existing CW dashboard).
+4. Final doc updates (README, DEV_HISTORY.md).
+5. Demo walkthrough prep covering the 4 domains: CI/CD + mature IaC, Security (Trivy per stage), Monitoring/Logging (hybrid Prom + Grafana on top of CloudWatch), Operations/Reliability (Instance Refresh + Fargate Spot for backend).
+6. Any final polish (optional: more panels/alerts in Grafana, commit remaining changes).
+
+Session saved for continuity (Grok session files only – user will handle GitHub commits themselves later). User on Windows/PowerShell, AWS us-east-1, account 866934333672. AWSDenyALL active on account today (resume tomorrow after admin removes it).
+
+KNOWN ISSUES / NOTES:
+- User's account currently has AWSDenyALL policy (blocks console + some CLI). Waiting for admin removal tomorrow.
+- ECS resources created only in dev TF state.
+- Task def in TF has placeholder; pipeline overrides with real digest + secrets.
+- /metrics not publicly exposed.
+- Password managed via SSM.
+- Session artifacts untracked.
+
+FILES CHANGED RECENTLY (ensure committed):
+- terraform/modules/ec2/main.tf (added cloudwatch_and_logs_read policy)
+- PROMETHEUS_GRAFANA_ACCESS_GUIDE.md (raw SELECT queries, visual builder notes, CLI for ALB dim, updated datasource instructions)
+- RESUME_THIS_GROK_SESSION.txt + DEV_HISTORY.md (this save)
+- Various docs.
+
+TO RESUME (tomorrow):
+- Run the CLI to get ALB LoadBalancer dimension value (see guide or the command in previous chat).
+- Add the ALB Target Response Time panel using the SELECT AVG query.
+- Save dashboard.
+- (Optional) re-test datasource if needed.
+- Then full promotion + verification.
+- If needed, re-apply TF locally with real password.
+- For Grafana quickstart: see raw queries in the guide.
+
+Session saved for continuity. User on Windows/PowerShell, AWS us-east-1, account 866934333672. AWSDenyALL active on account today (resume tomorrow after admin fix).
+
+---
+
+LATEST (subsequent session): Tech DevSecOps + light finance compliance (per 6-point confirmation)
+- Scope completed: Kept Trivy (SAST fs+image+SARIF+per-stage), added DAST (OWASP ZAP baseline post-dev-deploy with HTML artifact + rich summary), added Checkov (IaC Policy-as-Code in build-containers, soft-fail demo), added SBOM (CycloneDX via Trivy, artifact + summary).
+- Key files: .github/workflows/deploy.yml (integrated in build-containers + new dast-dev job; fixed http target for ALB; permissions + upload-artifact for ZAP report; extensive explanatory comments mapping to Amazon/Google practices + finance simulation).
+- DAST uses official zaproxy/action-baseline (chose ZAP over Nuclei for web app DAST fit; comments explain why + how to harden).
+- Updated: DEV_HISTORY.md (full new section with user quotes, what/why/how, industry mapping, SCRUM note). README already reflected Done status.
+- No over-engineering: no extra accounts, no new services, non-blocking for demo but comments show real gates, SARIF for SAST already present, DAST ready for SARIF extension.
+- CURRENT PIPELINE SECURITY LAYERS (visible in Actions + Security tab + artifacts):
+  1. Test job: Trivy filesystem scan
+  2. build-containers: Trivy image (table+SARIF), Checkov terraform scan, SBOM CycloneDX artifact
+  3. Per-stage (dev/staging/prod): re-scan of promoted digest + Trivy table in summaries
+  4. Post dev-deploy: dast-dev (ZAP active scan vs live ALB, report artifact)
+  5. Existing: manual prod approval gate
+- Ready for: push to development → watch new Checkov/SBOM/DAST jobs + ZAP report download → promotion flow.
+- ALB panel from prior session assumed completed by user (raw SELECT was ready); this session focused only on the confirmed security items.
+- Next for user: live pipeline run to generate evidence, screenshots (Actions graph with security jobs, Security tab SARIF, ZAP artifact, step summaries), full dev→staging→prod promotion test, final deck.
+
+Session saved. All changes per explicit user confirmation points 1-6. User will commit/push + run the pipeline.

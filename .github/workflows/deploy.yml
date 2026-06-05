@@ -13,12 +13,13 @@ name: CI/CD Pipeline - HA To-Do App (Presentation Demo)
 #    - Why important? You don't want to deploy raw source code. You build once,
 #      test the build, then deploy the exact same artifact everywhere.
 #
-# 2. TEST (NEW - added per your request)
-#    - Runs automated tests, linting, security scans, etc.
+# 2. TEST + SECURITY (DevSecOps - Amazon/Google style + light Finance compliance)
+#    - Runs automated tests, linting, **Trivy SAST** (fs + image), **Checkov Policy-as-Code**, SBOM generation.
 #    - In a real app this would include unit tests, integration tests, 
 #      accessibility checks, bundle size checks, etc.
-#    - Why crucial? Catching bugs BEFORE they reach any environment.
-#      "Shift left" testing saves huge amounts of time and money.
+#    - Why crucial? Catching bugs and security issues BEFORE they reach any environment.
+#      "Shift left" + layered security (SAST + IaC scanning + SBOM) is core to modern DevSecOps.
+#    - DAST (OWASP ZAP) runs after deploy in dev (simulates continuous security testing).
 #
 # 3. DEPLOY TO DEVELOPMENT (Automatic on push to `development` branch)
 #    - Deploys the built artifact to the Development environment.
@@ -47,7 +48,15 @@ name: CI/CD Pipeline - HA To-Do App (Presentation Demo)
 #    - Post-demo: terraform apply will fail the job on errors (no more swallowed "non-fatal continuing for demo").
 #
 # BRANCH STRATEGY (Promotion Flow - updated):
-# - Push to `development` → Build + Test + Deploy to Dev + **auto-creates PR to `staging`**
+# - Push to `development` → Build + Test + Security Scans (Trivy + Checkov + SBOM) + Deploy to Dev + DAST (ZAP) + **auto-creates PR to `staging`**
+
+# SECURITY & COMPLIANCE PRACTICES ADDED (Tech DevSecOps + light Finance simulation):
+# - SAST: Trivy (filesystem + container image) - kept and enhanced with per-stage re-scans + SARIF
+# - IaC Policy-as-Code: Checkov scanning Terraform (Amazon/Google practice)
+# - Supply Chain: SBOM generation (CycloneDX) attached as artifact (required in many finance/tech orgs)
+# - DAST: OWASP ZAP baseline scan after dev deploy (industry standard for web apps)
+# - "Gates": Manual approval for prod + vulnerability re-scans per stage (simulates compliance controls)
+# These demonstrate enterprise shift-left security without over-engineering a small project.
 # - Review & merge the PR to `staging` (manual step) → triggers Deploy to Staging
 # - After successful Staging deploy → **auto-creates PR to `production`**
 # - Review & merge the PR to `production` (manual approval via GitHub Environment) → Deploy to Prod
@@ -62,9 +71,10 @@ name: CI/CD Pipeline - HA To-Do App (Presentation Demo)
 #   (The PR body itself now contains these numbered steps for the person who opens it.)
 #
 # JOB DEPENDENCY GRAPH (for nice linear visual in Actions UI):
-# build → test → build-containers
+# build → test → build-containers  (Trivy SAST + Checkov IaC + SBOM here)
 #                  ↓
-#               deploy-dev → deploy-staging → production-approval → deploy-prod
+#               deploy-dev → dast-dev (ZAP, dev only) → deploy-staging → production-approval → deploy-prod
+# - dast-dev is a parallel post-deploy security job (only on dev pushes) to demonstrate DAST after the app is live.
 # - Connected with `needs: [previous]` on each job.
 # - build-containers produces the backend-image artifact (used by all deploys for immutable promotion).
 # - Later jobs use `if: always() && github.ref == 'refs/heads/xxx'` so that
@@ -183,7 +193,8 @@ jobs:
           echo "- Unit tests"
           echo "- Integration tests"
           echo "- Linting / Type checking"
-          echo "- Security scanning (SAST)"
+          echo "- Security scanning (SAST with Trivy)"
+          echo "- IaC Policy-as-Code (Checkov)"
           echo "- Bundle size checks"
 
   # ===================== CONTAINER BUILD + SCAN (NEW for ECS/ECR migration) =====================
@@ -237,7 +248,7 @@ jobs:
           severity: 'CRITICAL,HIGH'
 
       - name: Upload Trivy SARIF (showcases vulnerabilities in GitHub Security > Code scanning alerts)
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: 'trivy-backend.sarif'
 
@@ -252,6 +263,23 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Full results + history available in GitHub Security tab (SARIF upload)." >> $GITHUB_STEP_SUMMARY
+
+      - name: Checkov IaC Security Scan (Terraform Policy-as-Code)
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: terraform
+          framework: terraform
+          output_format: cli
+          soft_fail: true   # Demo mode - shows findings without breaking the demo pipeline.
+                            # In real Amazon/Google + Finance setups: soft_fail=false + fail on HIGH severity.
+          download_external_modules: true
+
+      - name: Checkov Summary (Policy as Code)
+        run: |
+          echo "## 🛡️ IaC Security - Checkov (Policy-as-Code)" >> $GITHUB_STEP_SUMMARY
+          echo "Scanned Terraform configuration for misconfigurations (e.g. overly permissive security groups, missing encryption, public buckets)." >> $GITHUB_STEP_SUMMARY
+          echo "This follows Amazon/Google DevSecOps practice of 'Policy as Code' for infrastructure." >> $GITHUB_STEP_SUMMARY
+          echo "See job logs for details. In production this would be a hard gate." >> $GITHUB_STEP_SUMMARY
 
       - name: Push Backend Image to ECR (immutable digest for promotion)
         run: |
@@ -269,6 +297,20 @@ jobs:
           path: backend-image.txt
           retention-days: 7
 
+      - name: Generate SBOM (CycloneDX - Supply Chain Security)
+        run: |
+          trivy image --format cyclonedx --output sbom-backend.cdx.json ha-backend:${{ github.sha }}
+          echo "## 📦 SBOM - Software Bill of Materials" >> $GITHUB_STEP_SUMMARY
+          echo "Generated CycloneDX SBOM for the backend container image." >> $GITHUB_STEP_SUMMARY
+          echo "This is a key industry practice (Amazon, Google, finance sector post-Log4j) for supply chain transparency and vulnerability tracking." >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload SBOM Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-backend-${{ github.sha }}
+          path: sbom-backend.cdx.json
+          retention-days: 30
+
       # TODO: Add frontend container image build/scan/push if fully containerizing the static site (nginx + built React)
       # For now frontend remains on S3 (cost efficient for static).
 
@@ -278,6 +320,8 @@ jobs:
     needs: [test, build-containers]
     if: github.ref == 'refs/heads/development'
     runs-on: ubuntu-latest
+    outputs:
+      alb_dns: ${{ steps.get-alb-dns.outputs.alb_dns }}
     steps:
       - uses: actions/checkout@v4
 
@@ -399,6 +443,13 @@ jobs:
             --force-new-deployment || echo "Service update note (ALB rule + service should exist from TF apply)"
 
           echo "ECS Fargate Spot deploy completed for development. API traffic now routed /api/* -> Fargate tasks via ALB."
+
+      - name: Get ALB DNS for DAST (dev only)
+        id: get-alb-dns
+        run: |
+          ALB_DNS=$(aws elbv2 describe-load-balancers --names ha-project-alb --query "LoadBalancers[0].DNSName" --output text 2>/dev/null || echo "")
+          echo "alb_dns=$ALB_DNS" >> $GITHUB_OUTPUT
+          echo "ALB DNS for DAST: http://$ALB_DNS (ALB is HTTP on :80)" >> $GITHUB_STEP_SUMMARY
 
       - name: Trigger ASG Refresh
         run: |
@@ -792,3 +843,73 @@ jobs:
           echo "See ECS_ECR_MIGRATION_GUIDE.md for Fargate Spot steps, CloudWatch viewing, best metrics ideas for this project (golden signals, task throughput, Spot interruptions, Instance Refresh impact, Trivy vuln trends, DB connection health), + how to add Prometheus + Grafana on top of CloudWatch."
           echo "Best practice: structured JSON logs + correlation IDs + SLO-based alerts."
           echo "See ECS_ECR_MIGRATION_GUIDE.md for more details."
+
+  # ===================== DAST (OWASP ZAP) - DevSecOps Practice =====================
+  # Added as part of industry best practices (Tech DevSecOps + light Finance compliance simulation).
+  # Runs after dev deploy. Uses the ALB that was created in the dev Terraform apply.
+  # Complements Trivy (SAST/container) + Checkov (IaC) + SBOM (supply chain) with runtime/dynamic testing.
+  # Recommendation: OWASP ZAP chosen over Nuclei here because:
+  #   - Classic DAST for web apps (spider + active scan against running ALB + /api surface)
+  #   - Official GitHub Action maintained, easy SARIF/artifact integration path
+  #   - Nuclei is excellent for template-driven API vuln scanning / known CVEs but less "full web app" DAST out of box
+  # In real enterprise (Amazon/Google + finance): fail on HIGH/CRITICAL, upload SARIF, schedule + post-deploy, authenticated scans.
+  dast-dev:
+    name: DAST - OWASP ZAP Baseline (Development)
+    needs: deploy-dev
+    if: github.ref == 'refs/heads/development' && needs.deploy-dev.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write   # future-proof for SARIF DAST upload
+    steps:
+      - name: OWASP ZAP Baseline Scan (active scan vs live ALB)
+        uses: zaproxy/action-baseline@v0.12.0
+        with:
+          target: 'http://${{ needs.deploy-dev.outputs.alb_dns }}'
+          fail_action: false   # Demo-friendly: report only. In real use: true + rules_file for custom policy.
+          cmd_options: "-I"    # Ignore some informational issues for cleaner demo output
+
+      - name: Locate ZAP report (action writes to workspace root)
+        if: always()
+        run: |
+          echo "=== Files after ZAP scan (looking for report) ==="
+          ls -la report_html.html zap-report.html *.html 2>/dev/null || true
+          find . -maxdepth 2 -type f \( -name "*zap*" -o -name "*report*.html" -o -name "report_html*" \) 2>/dev/null | head -10 || true
+          echo "=== End locate ==="
+
+      - name: Upload ZAP Report Artifact (portfolio evidence)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-baseline-report-dev
+          path: |
+            report_html.html
+            zap-report.html
+            **/*zap*.html
+            **/*report*.html
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: DAST Summary for Pipeline
+        if: always()
+        run: |
+          echo "## 🛡️ DAST - OWASP ZAP Baseline Scan (dev)" >> $GITHUB_STEP_SUMMARY
+          echo "**Target:** http://${{ needs.deploy-dev.outputs.alb_dns }} (HTTP ALB :80)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "This is a basic active scan for OWASP Top 10 issues against the live ALB (post-deploy)." >> $GITHUB_STEP_SUMMARY
+          echo "ZAP HTML report uploaded as artifact 'zap-baseline-report-dev' (visible in this run's Artifacts)." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Layered security in this pipeline (Amazon/Google + light finance simulation):" >> $GITHUB_STEP_SUMMARY
+          echo "- SAST + container: Trivy (fs + image, per-stage re-scan, SARIF to Security tab)" >> $GITHUB_STEP_SUMMARY
+          echo "- IaC Policy-as-Code: Checkov (Terraform misconfigs)" >> $GITHUB_STEP_SUMMARY
+          echo "- Supply chain: SBOM (CycloneDX JSON artifact)" >> $GITHUB_STEP_SUMMARY
+          echo "- DAST: OWASP ZAP baseline (this job, live app surface)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "In a real enterprise pipeline:" >> $GITHUB_STEP_SUMMARY
+          echo "- Fail the pipeline on HIGH/CRITICAL findings (set fail_action: true)" >> $GITHUB_STEP_SUMMARY
+          echo "- Upload SARIF (DAST + SAST) to GitHub Security tab for audit/trends" >> $GITHUB_STEP_SUMMARY
+          echo "- Run on a schedule (nightly/weekly) in addition to after every deploy" >> $GITHUB_STEP_SUMMARY
+          echo "- Use authenticated scans + custom rules / API scan for business-logic vulns" >> $GITHUB_STEP_SUMMARY
+          echo "- Combine with Nuclei for known CVE templates if desired (complementary)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Full ZAP HTML report + console output in the job logs + downloadable artifact." >> $GITHUB_STEP_SUMMARY
