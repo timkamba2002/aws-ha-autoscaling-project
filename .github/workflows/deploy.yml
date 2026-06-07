@@ -859,10 +859,11 @@ jobs:
   #   - Nuclei is excellent for template-driven API vuln scanning / known CVEs but less "full web app" DAST out of box
   # In real enterprise (Amazon/Google + finance): fail on HIGH/CRITICAL, upload SARIF, schedule + post-deploy, authenticated scans.
   #
-  # Note on artifact: The ZAP action defaults to uploading reports as artifact named "zap_scan".
-  # We override with `artifact_name: zap-baseline-report-dev` to avoid "The artifact name zap_scan is not valid" errors
-  # (and to have a descriptive name). The action handles the upload internally; we removed our manual duplicate upload step
-  # to prevent "already exists" failures. The locate step remains for debugging file presence in logs.
+  # We run ZAP via direct `docker run ... zap-baseline.py` (instead of the `zaproxy/action-baseline` action)
+  # because the action's internal artifact upload (bundled older @actions/artifact client) persistently fails with
+  # "Create Artifact Container failed: The artifact name ... is not valid" (seen with both default "zap_scan" and custom names).
+  # This is a known compatibility issue with the ZAP action + certain GitHub artifact service backends.
+  # Manual docker + official actions/upload-artifact@v4 with simple name "zap-report" is reliable and gives us control.
   dast-dev:
     name: DAST - OWASP ZAP Baseline (Development)
     needs: deploy-dev
@@ -872,26 +873,38 @@ jobs:
       contents: read
       security-events: write   # future-proof for SARIF DAST upload (if we ever enable SARIF output from ZAP)
     steps:
-      - name: OWASP ZAP Baseline Scan (active scan vs live ALB)
-        uses: zaproxy/action-baseline@v0.12.0
-        with:
-          target: 'http://${{ needs.deploy-dev.outputs.alb_dns }}'
-          fail_action: false           # Demo-friendly: do not fail the job on findings.
-          allow_issue_writing: false   # Prevent the action from auto-creating/updating a GitHub Issue with the scan report.
-          artifact_name: zap-baseline-report-dev  # Override the default 'zap_scan' (which was causing "artifact name not valid" error). The action will upload the ZAP reports (HTML etc.) under this name.
-          cmd_options: "-I"            # Ignore some informational issues for cleaner demo output
+      - name: OWASP ZAP Baseline Scan (manual via docker - reliable artifact upload)
+        # We run ZAP directly with docker instead of the pre-made action because the action's internal
+        # artifact upload (using its bundled @actions/artifact client) has persistent "artifact name not valid"
+        # errors with both default 'zap_scan' and custom names like 'zap-baseline-report-dev' (known issue in ZAP action + GitHub backend).
+        # Manual control lets us use a proven simple name with the official upload-artifact@v4.
+        run: |
+          set +e
+          docker run --rm -v $(pwd):/zap/wrk -t ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py \
+            -t "http://${{ needs.deploy-dev.outputs.alb_dns }}" \
+            -I \
+            -r report_html.html
+          ZAP_EXIT=$?
+          echo "ZAP baseline scan completed. Report at report_html.html. ZAP exit=$ZAP_EXIT (non-zero = alerts found; this is expected and does not fail the demo job)"
+          # Do not let ZAP findings fail the step (matches previous fail_action: false behavior)
 
-      - name: Locate ZAP report (action writes to workspace root)
+      - name: Locate ZAP report (for debugging)
         if: always()
         run: |
           echo "=== Files after ZAP scan (looking for report) ==="
-          ls -la report_html.html zap-report.html *.html 2>/dev/null || true
+          ls -la report_html.html *.html 2>/dev/null || true
           find . -maxdepth 2 -type f \( -name "*zap*" -o -name "*report*.html" -o -name "report_html*" \) 2>/dev/null | head -10 || true
           echo "=== End locate ==="
 
-      # Note: Artifact upload is now handled automatically by the ZAP action itself (see artifact_name input above).
-      # This avoids duplicate upload attempts and the previous "zap_scan is not valid" error.
-      # The report will appear in the workflow run's Artifacts as "zap-baseline-report-dev".
+      - name: Upload ZAP Report Artifact (portfolio evidence)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-report
+          path: report_html.html
+          retention-days: 14
+          if-no-files-found: warn
 
       - name: DAST Summary for Pipeline
         if: always()
@@ -900,7 +913,7 @@ jobs:
           echo "**Target:** http://${{ needs.deploy-dev.outputs.alb_dns }} (HTTP ALB :80)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "This is a basic active scan for OWASP Top 10 issues against the live ALB (post-deploy)." >> $GITHUB_STEP_SUMMARY
-          echo "ZAP HTML report uploaded automatically by the ZAP action as artifact 'zap-baseline-report-dev' (visible in this run's Artifacts)." >> $GITHUB_STEP_SUMMARY
+          echo "ZAP HTML report uploaded as artifact 'zap-report' (visible in this run's Artifacts)." >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Layered security in this pipeline (Amazon/Google + light finance simulation):" >> $GITHUB_STEP_SUMMARY
           echo "- SAST + container: Trivy (fs + image, per-stage re-scan, SARIF to Security tab)" >> $GITHUB_STEP_SUMMARY
