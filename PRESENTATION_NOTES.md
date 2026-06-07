@@ -17,44 +17,51 @@ You can then briefly describe:
 
 ---
 
-## Pipeline Walkthrough (Strong Section)
+## Pipeline Walkthrough + Modern DevSecOps (Strongest Section)
 
-Walk through the actual run:
+Walk through a real run on `development`:
 
-1. **Build** – Compiles the React app
-2. **Test** – Runs tests and quality checks
-3. **Deploy to Development** – Automatic on push to `development` branch
-4. **Deploy to Staging** – Continues automatically
-5. **Manual Approval Gate** – Pipeline stops here
-6. **Deploy to Production** – Only after explicit approval
+1. **Build + Test + Security** (single job graph):
+   - Build React
+   - Trivy SAST (filesystem) + Trivy container image scan + SARIF upload to GitHub Security tab
+   - **Checkov** IaC Policy-as-Code on the entire `terraform/` directory
+   - SBOM generation (CycloneDX) as artifact
+2. **Deploy to Development** (automatic) — Terraform + ECS Fargate Spot backend + ASG refresh on frontend + ALB path routing
+3. **DAST (ZAP)** — OWASP ZAP baseline active scan against the live ALB (post-deploy). HTML report as artifact.
+4. **Auto-PR to staging** created by the pipeline
+5. **Deploy to Staging** (after you manually merge the PR)
+6. **Auto-PR to production**
+7. **Manual Approval Gate** (GitHub Environment "production")
+8. **Deploy to Production** (only after human approval)
 
-**Key message to emphasize:**
+**Key messages to emphasize (this is what makes the project portfolio-strong):**
 
-> "One push to the development branch triggers everything up to Staging. The pipeline then correctly stops at the Production approval gate. This is intentional — we should not promote incomplete features to Production."
+> "This is a realistic enterprise-style promotion pipeline with immutable artifacts (image digest promotion), layered security gates, and explicit human approval before Production — exactly the kind of process you see at Amazon, Google, or finance companies."
+
+> "The DevSecOps additions (Trivy + Checkov + SBOM + ZAP DAST) demonstrate shift-left security + supply chain practices without over-engineering. Checkov and ZAP findings are shown but the pipeline stays green for the demo (soft_fail + fail_action: false). In real use these would be hard gates."
+
+> "Fargate Spot for the backend + Instance Refresh for the frontend lets me show both modern cost-optimized containers and classic reliable EC2 operations in the same stack."
 
 ---
 
 ## Current State & Honest Assessment (Very Important)
 
-This is where you can stand out.
+**Recommended framing (current June 2026 state):**
 
-**Recommended framing (updated June 2026):**
+> "The project now demonstrates a modern hybrid architecture: React static frontend on EC2 ASG (for the Instance Refresh reliability demo) + Node.js backend on ECS Fargate Spot (cost-optimized, no EC2 management) behind the same ALB using path-based routing. Full end-to-end persistence to RDS works in dev. The CI/CD pipeline includes real DevSecOps (Trivy, Checkov, SBOM, OWASP ZAP DAST) and a proper promotion flow with manual gates."
 
-> "The full application is now working end-to-end in the development environment. The React frontend loads through the Application Load Balancer, the Node.js backend is running on both instances in the Auto Scaling Group, and tasks created in the UI are successfully saved to Amazon RDS MySQL."
+**Talk about the real journey (this is gold for an instructor):**
 
-**Talk about the real journey:**
-
-The honest story is much stronger than pretending everything worked smoothly:
-
-- We went through multiple failed attempts to get the backend talking to RDS
-- Faced repeated issues with user-data not installing the correct versions of Node and nginx on Amazon Linux 2
-- Dealt with IAM permission restrictions on both the GitHub OIDC role and EC2 instance roles
-- Discovered and fixed subtle issues like SSM parameters containing port numbers (`:3306`) that broke DNS resolution in Node.js
-- Completely rewrote the user-data script to be resilient (proper Node 16 via NodeSource, correct nginx installation via `amazon-linux-extras`, early region export, and proper logging)
+- Long backend + RDS battle (wrong driver, port in SSM, IAM, user-data fragility on Amazon Linux 2)
+- Multiple full rewrites of user-data until it was resilient
+- IAM permission hell on both the GitHub OIDC role and EC2 roles (repeated 403s on PutRolePolicy, ListRolePolicies, TagRole, etc.)
+- VPC/NAT sprawl (9 VPCs + 5 NATs) caused by per-env state + non-namespaced modules — diagnosed live, fleet unaffected, cleanup commands delivered
+- Complete migration of backend to ECS Fargate Spot + ALB path routing while keeping the EC2 frontend for operations demos
+- Adding a full industry-grade DevSecOps layer (Trivy kept + Checkov + SBOM + ZAP DAST) on top of the existing pipeline
 
 **Key message:**
 
-> "This project taught me far more through debugging and fixing real infrastructure problems than it would have if everything had worked on the first try. The detailed history of challenges and solutions is documented in [DEV_HISTORY.md](./DEV_HISTORY.md)."
+> "These are the messy, real-world problems you actually encounter when building production-style systems. Being able to diagnose, document, and systematically fix them (see DEV_HISTORY.md) is far more valuable than a perfect first-try tutorial project."
 
 **Talk about the blockers you actually overcame:**
 
@@ -82,17 +89,22 @@ You can tie this directly to enterprise practices.
 
 ---
 
-## Future Plans (Show Forward Thinking)
+## Future Plans / What Was Recently Delivered (Show Forward Thinking + Completion)
 
-Briefly walk through the roadmap (you can say "some already in progress"):
+**What is now complete (the big recent additions):**
 
-- **Immediate (this week)**: Complete the VPC/NAT orphan cleanup using the live discovery commands (cost control + account hygiene). This is a concrete Operations win.
-- First priority: Get the backend fully working and add integration tests (or confirm it is solid post-refresh)
-- Then: Containerize the backend with Docker and migrate to ECS Fargate
-- Improve secrets management and observability (SNS alarms + Trivy already partially in place)
-- Add Policy as Code and container scanning
+- Full ECS Fargate Spot migration for backend (with ALB `/api/*` routing) while preserving EC2 + Instance Refresh for frontend (best of both worlds for a portfolio)
+- Complete DevSecOps layer: Trivy (SAST + image, per-stage re-scans + SARIF), **Checkov** Policy-as-Code, SBOM generation, **OWASP ZAP** DAST after dev deploy
+- Hybrid observability (CloudWatch + Prometheus + Grafana) with real business SLIs (task create/fetch rates) + golden signals
 
-This shows you have a plan and aren't just stopping here.
+**Honest next steps you can mention:**
+
+- VPC/NAT orphan cleanup (already audited — commands ready)
+- More integration tests + make the "verify-deployment" script even stronger
+- Optional: move more of the security jobs to reusable composite actions
+- Longer term: Secrets Manager, WAF, proper HTTPS listener + ACM, etc.
+
+This shows you delivered on the instructor's 4-domain request (CI/CD+IaC, Security, Monitoring, Operations/Reliability) plus the requested SAST/DAST work, while keeping the project realistic for a student.
 
 ---
 
@@ -116,13 +128,13 @@ Possible tough question: *"Why isn't the full application working?"*
 
 ---
 
-## Quick Reference – Key Messages
+## Quick Reference – Key Messages (Updated for Current State)
 
-- **Pipeline is solid** → Emphasize the structure and approval gate.
-- **Honesty is strength** → Clearly state what works and what doesn't.
-- **Approval gate is working as intended** → You stopped promotion because the app wasn't ready.
-- **You have a plan** → Show the Future Plans section.
-- **Real-world constraints** → IAM limitations are common in enterprise environments.
+- **4 domains covered end-to-end**: CI/CD + mature IaC (Terraform per-env state + promotion), Security (full DevSecOps with Trivy/Checkov/SBOM/ZAP + light finance simulation via gates + artifacts), Monitoring (CW + Prom/Grafana hybrid with business metrics), Operations/Reliability (Fargate Spot + Instance Refresh MinHealthy 100% + healthchecks + real debugging story).
+- **Promotion + gates are real**: Push to development triggers full security scan + deploy + DAST + auto-PR. Manual merge + Prod environment approval required.
+- **Honesty + journey > perfection**: Talk about the long backend/RDS/IAM/debugging battle and the VPC sprawl diagnosis — it makes the wins (Fargate migration, DevSecOps layer, hybrid monitoring) much more credible.
+- **Security layer is the new highlight**: You kept Trivy (as requested), added Checkov + SBOM + ZAP DAST exactly per your 6-point confirmation with the instructor. The pipeline shows the findings but stays green for the demo (realistic).
+- **Modern + classic in one project**: Fargate Spot (cost, no management) + classic EC2 Instance Refresh (operations demo) behind one ALB.
 
 ## Demoing Monitoring (CloudWatch + SNS) & API Verification (for instructor review)
 

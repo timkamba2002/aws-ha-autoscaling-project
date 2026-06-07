@@ -11,30 +11,34 @@ See [PRESENTATION_NOTES.md](./PRESENTATION_NOTES.md) and [NEXT_STEPS.md](./NEXT_
 
 ---
 
-## 📐 Current Architecture
+## 📐 Current Architecture (Hybrid - EC2 Frontend + ECS Fargate Spot Backend)
 
 ```
 Internet
    │
    ▼
-Application Load Balancer (ALB)
+Application Load Balancer (ALB) - port 80 + path-based routing
    │
-   ▼
-Auto Scaling Group (EC2 - Private Subnets)
+   ├── /          → ASG (EC2) → nginx → React static (from S3)
    │
-   ├── React Frontend (served via Apache/nginx from S3)
-   │
-   └── Node.js Backend (API layer - currently limited)
-            │
-            ▼
-      Amazon RDS MySQL (myapp-rds)
+   └── /api/*     → ECS Fargate Spot (ha-backend-service)
+                        │
+                        ▼
+                  Amazon RDS MySQL (myapp-rds) — shared across envs via SSM
 ```
 
-- **Frontend**: React application built with Create React App
-- **Backend**: Node.js + Express + mysql2
-- **Database**: Amazon RDS MySQL 8.0
-- **Infrastructure**: Fully managed with Terraform
-- **CI/CD**: GitHub Actions with OIDC authentication
+**Key Components (June 2026 state)**:
+- **Frontend**: React (built, synced to S3 `frontend/{env}/`), served by nginx on EC2 ASG (kept for Instance Refresh demo)
+- **Backend**: Node.js + Express + mysql2 + prom-client (full instrumentation), running as ECS Fargate Spot tasks (capacity_provider_strategy, no EC2 management)
+- **ALB**: Path rules (`/api` and `/api/*` → ECS target group with IP targets; default → EC2 target group)
+- **Database**: Amazon RDS MySQL 8.0 (persistent across deploys)
+- **Infrastructure**: Terraform with per-environment remote state (development/staging/production)
+- **CI/CD**: GitHub Actions + OIDC (no long-lived keys) — full promotion flow with auto-PRs + manual Prod gate
+- **Security (DevSecOps layer)**: Trivy (fs + image + SARIF + per-stage re-scans), Checkov (IaC Policy-as-Code), SBOM (CycloneDX), OWASP ZAP DAST post-dev-deploy
+- **Observability**: CloudWatch (Logs, Container Insights, Alarms, IaC Dashboard) + Prometheus + Grafana hybrid (business SLIs + golden signals)
+- **Reliability**: ASG Instance Refresh (MinHealthy 100%), Fargate Spot, healthchecks, SSM for secrets
+
+This hybrid setup lets you demonstrate both classic EC2 operations (refresh) and modern serverless container practices (Fargate Spot) in one project.
 
 ---
 
@@ -177,10 +181,10 @@ The current pipeline is already quite mature for a learning project. Planned imp
 
 - **Container-Native Deployments**: Once the backend is moved to ECS Fargate, the pipeline will build Docker images, push them to ECR, and deploy via ECS instead of syncing static files to S3.
 - **Artifact Promotion Model**: Build and test once → promote the exact same container image through Dev → Staging → Production (instead of rebuilding).
-- **Security Scanning**: Add Trivy (or similar) container vulnerability scanning in the pipeline before promotion.
-- **GitHub Environments for all stages**: Apply deployment protection rules to Staging in addition to Production.
-- **Reusable Workflows**: Extract common steps (Terraform init/apply, ECR login, etc.) into reusable workflows for better maintainability.
-- **Manual Promotion Workflows**: Create dedicated "Promote to Staging" and "Promote to Production" workflows (triggered manually) for clearer audit trails and demos.
+- ~~Security Scanning~~: ✅ Trivy (fs + image + SARIF + per-stage) + Checkov (IaC) + SBOM + OWASP ZAP DAST implemented
+- GitHub Environments for all stages: Apply deployment protection rules to Staging in addition to Production (Prod already has it).
+- Reusable Workflows: Extract common steps (Terraform init/apply, ECR login, etc.) into reusable workflows for better maintainability.
+- Manual Promotion Workflows: Create dedicated "Promote to Staging" and "Promote to Production" workflows (triggered manually) for clearer audit trails and demos.
 
 ### Recommended Approach After Presentation
 
