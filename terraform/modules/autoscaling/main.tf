@@ -1,8 +1,10 @@
 resource "aws_autoscaling_group" "asg" {
-  name                      = "ha-project-asg"
-  max_size                  = 4
-  min_size                  = 2
-  desired_capacity          = 2
+  count = var.create_asg ? 1 : 0
+
+  name             = "ha-project-asg"
+  max_size         = 4
+  min_size         = 2
+  desired_capacity = 2
 
   # Private subnets from the VPC module
   vpc_zone_identifier = var.private_subnet_ids

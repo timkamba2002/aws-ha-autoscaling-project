@@ -1,0 +1,117 @@
+name: Rollback Deployment
+
+# =============================================================================
+# ROLLBACK WORKFLOW
+# =============================================================================
+# Purpose: Quickly rollback the application to a previous known-good version
+# in case of issues in Staging or Production.
+#
+# How to use:
+# 1. Go to GitHub Actions → "Rollback Deployment"
+# 2. Click "Run workflow"
+# 3. Select the environment (staging or production)
+# 4. Enter the version/tag to rollback to (e.g., v1.2.3 or commit SHA)
+# 5. (Optional) Choose whether to also rollback the Launch Template version
+#
+# This is a critical disaster recovery tool for a professional pipeline.
+# =============================================================================
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to rollback'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+      version:
+        description: 'Version or commit SHA to rollback to (e.g. v1.2.3 or abc1234)'
+        required: true
+        type: string
+      rollback_launch_template:
+        description: 'Also rollback the Launch Template to a previous version? (EC2 only)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  FRONTEND_BUCKET: ha-project-frontend-builds
+  OIDC_ROLE: arn:aws:iam::866934333672:role/GitHubActionsDeployRole-HAProjectV2
+
+jobs:
+  rollback:
+    name: Rollback to Previous Version
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.OIDC_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Rollback Frontend (S3)
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          ENV="${{ github.event.inputs.environment }}"
+
+          echo "Rolling back frontend to version: $VERSION for environment: $ENV"
+
+          # Expected structure: s3://bucket/frontend/versions/v1.2.3/
+          # We sync that version back to the active path
+          if [ "$ENV" = "staging" ]; then
+            TARGET_PATH="frontend/staging/"
+          else
+            TARGET_PATH="frontend/production/"
+          fi
+
+          echo "Syncing s3://${{ env.FRONTEND_BUCKET }}/frontend/versions/$VERSION/ → s3://${{ env.FRONTEND_BUCKET }}/$TARGET_PATH"
+          aws s3 sync "s3://${{ env.FRONTEND_BUCKET }}/frontend/versions/$VERSION/" \
+                      "s3://${{ env.FRONTEND_BUCKET }}/$TARGET_PATH" \
+                      --delete
+
+          echo "Frontend rollback to $VERSION completed for $ENV"
+
+      - name: Rollback Launch Template Version (if requested)
+        if: github.event.inputs.rollback_launch_template == 'true'
+        run: |
+          echo "Rolling back Launch Template version for ASG..."
+          # Note: This assumes you have a way to map versions to Launch Template versions.
+          # For a more robust solution, store successful Launch Template versions in SSM or a file.
+          echo "Manual Launch Template rollback may be required via AWS Console or additional scripting."
+          # Example (uncomment and adapt when you have version mapping):
+          # aws autoscaling update-auto-scaling-group \
+          #   --auto-scaling-group-name ha-project-asg \
+          #   --launch-template LaunchTemplateId=lt-xxx,Version=$LAUNCH_TEMPLATE_VERSION
+
+      - name: Trigger ASG Refresh after Rollback
+        run: |
+          echo "Triggering ASG Instance Refresh after rollback..."
+          aws autoscaling start-instance-refresh \
+            --auto-scaling-group-name ha-project-asg \
+            --strategy Rolling \
+            --preferences MinHealthyPercentage=50,InstanceWarmup=90 \
+            --region ${{ env.AWS_REGION }} || true
+
+          echo "Rollback complete. Monitor the ASG refresh in the AWS Console."
+
+      - name: Rollback Summary
+        run: |
+          echo "=================================================="
+          echo "ROLLBACK EXECUTED"
+          echo "Environment : ${{ github.event.inputs.environment }}"
+          echo "Version     : ${{ github.event.inputs.version }}"
+          echo "Timestamp   : $(date)"
+          echo "=================================================="
+          echo "Please verify the application is healthy after the ASG refresh."
+          echo "If using ECS in the future, this workflow will be updated to rollback the ECS service to a previous task definition revision."

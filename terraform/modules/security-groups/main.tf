@@ -1,4 +1,6 @@
 resource "aws_security_group" "alb_sg" {
+  count = var.create ? 1 : 0
+
   name        = "alb-sg"
   description = "Allow HTTP traffic from the internet"
   vpc_id      = var.vpc_id
@@ -24,6 +26,8 @@ resource "aws_security_group" "alb_sg" {
 }
 
 resource "aws_security_group" "ec2_sg" {
+  count = var.create ? 1 : 0
+
   name        = "ec2-sg"
   description = "Allow traffic only from ALB"
   vpc_id      = var.vpc_id
@@ -33,7 +37,7 @@ resource "aws_security_group" "ec2_sg" {
     from_port       = 80
     to_port         = 80
     protocol        = "tcp"
-    security_groups = [aws_security_group.alb_sg.id]
+    security_groups = [aws_security_group.alb_sg[0].id]
   }
 
   egress {
@@ -45,5 +49,32 @@ resource "aws_security_group" "ec2_sg" {
 
   tags = {
     Name = "ec2-sg"
+  }
+}
+
+# Data sources for non-dev envs
+data "aws_security_group" "alb_sg" {
+  count  = var.create ? 0 : 1
+  vpc_id = var.vpc_id
+  filter {
+    name   = "group-name"
+    values = ["alb-sg"]
+  }
+  filter {
+    name   = "description"
+    values = ["Allow HTTP traffic from the internet"]
+  }
+}
+
+data "aws_security_group" "ec2_sg" {
+  count  = var.create ? 0 : 1
+  vpc_id = var.vpc_id
+  filter {
+    name   = "group-name"
+    values = ["ec2-sg"]
+  }
+  filter {
+    name   = "description"
+    values = ["Allow traffic only from ALB"]
   }
 }
