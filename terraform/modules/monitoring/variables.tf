@@ -11,7 +11,7 @@ variable "backend_log_group_name" {
 
 variable "log_retention_days" {
   type    = number
-  default = 14
+  default = 90   # Raised from 14 to address CKV_AWS_338 (Checkov wants >=365 for strict compliance; 90 is a reasonable demo compromise)
 }
 
 variable "rds_instance_identifier" {

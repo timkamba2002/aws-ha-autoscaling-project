@@ -360,3 +360,102 @@ The user can now run the apply for dev (Fargate Spot), push, watch the pipeline 
 
 This completes the requested scope.
 
+## Recent session: Prom + Grafana Hybrid Dashboard (completed basic version)
+
+**Accomplished**:
+- Set up disposable test Prometheus + Grafana on the EC2 bastion (Docker containers with `--network host` + volume-mounted prometheus.yml for live Fargate task IPs discovered via `aws ecs list-tasks` + `describe-tasks` loop).
+- Prometheus datasource working in Grafana (via SSM port-forward localhost:3001).
+- Added working Prom panels (raw code preferred for reliability in the Expression field):
+  - Task Creation Rate (business SLI)
+  - p99 API Request Latency
+  - HTTP Requests by Status (with stack option)
+  - DB Operations Rate by Type (the reliable one using count rate – works even when histogram is sparse)
+  - Task Fetches Rate (optional)
+- CloudWatch datasource: initially failed with AccessDenied (ListMetrics / DescribeLogGroups). Fixed by adding `aws_iam_role_policy "cloudwatch_and_logs_read"` to the ec2 module in Terraform (covers cloudwatch:* and logs:* read actions). Re-applied TF; datasource now reports "Successfully queried the CloudWatch metrics API" + logs API.
+- Added 2 CloudWatch panels (raw Metrics Insights SELECT syntax):
+  - ECS Backend CPU (Fargate Spot) for ha-project-cluster / ha-backend-service
+  - ECS Backend Memory (Fargate Spot) – same dimensions
+- Dashboard saved as **"HA To-Do – Prom + CloudWatch"**.
+- All raw queries documented (SELECT AVG(...) FROM "AWS/..." WHERE ...). User prefers code/raw over visual builder.
+- ALB Target Response Time panel ready to add (query prepared); blocked today because user's account has AWSDenyALL policy (admin to remove tomorrow). CLI command to extract the exact LoadBalancer dimension value (`aws elbv2 describe-load-balancers ... | sed 's/.*loadbalancer\///'`) is in the guide and previous chat.
+- Traffic generation + time range tips given (use site to create tasks while viewing dashboard so lines move).
+
+**Guide updates**:
+- PROMETHEUS_GRAFANA_ACCESS_GUIDE.md heavily expanded with raw code queries (SELECT form), troubleshooting for "no data"/syntax errors, how to switch modes, CLI for ALB dim, and notes on SDK DEFAULT for CW datasource.
+- RESUME_THIS_GROK_SESSION.txt and this DEV_HISTORY updated for continuity.
+
+**Status**:
+- Hybrid dashboard (Prom app SLIs + CW infra) is in good shape: Prom panels + ECS CPU/Memory CW panels added. Dashboard saved as "HA To-Do – Prom + CloudWatch".
+- User is back with permissions restored (AWSDenyALL removed by admin).
+- ALB panel pending (need dimension value via CLI).
+
+**Next**:
+- Run CLI to get ALB LoadBalancer dimension value.
+- Add ALB Target Response Time panel using the raw SELECT query.
+- Save final dashboard.
+- (Optional) View the pre-built Terraform CW dashboard (development-ha-project-overview).
+- Full promotion flow test (dev change → staging PR → prod approval → verify on Spot).
+- Screenshots, final docs, demo prep.
+
+Session resumed. User will handle their own GitHub commits after finishing the ALB panel and remaining work.
+
+**SCRUM UPDATE TEMPLATE (copy-paste ready for tomorrow):**
+
+"Yesterday I focused on the Prometheus + Grafana monitoring piece. I got the Prometheus datasource working in Grafana, added the main application SLI panels (Task Creation Rate, p99 Latency, HTTP by Status, and the reliable DB Operations Rate), fixed the CloudWatch datasource by adding the required policy through Terraform, and added the ECS CPU and Memory panels for the Fargate backend. I saved the hybrid 'HA To-Do – Prom + CloudWatch' dashboard.
+
+Today I plan to get the ALB LoadBalancer dimension value via CLI once permissions are restored, add the final ALB Target Response Time panel to complete the dashboard, and then run the full pipeline promotion test from dev through staging to prod.
+
+Blockers: My AWS account currently has an AWSDenyALL policy, so I can't access the console or run some CLI commands. Waiting for my admin to remove it."
+
+---
+
+## Recent session: Tech DevSecOps + Light Finance Compliance Simulation (Trivy kept + DAST + Checkov + SBOM)
+
+**User explicit confirmation (6 points)**:
+1. Tech devsecops with light finance compliance simulation
+2. Keep Trivy and add DAST
+3. (do you recommend Nuclei or OWASP ZAP, im looking at those 2) → OWASP ZAP recommended (and chosen) for classic web/ALB DAST; Nuclei noted as complementary for template/CVEs
+4. add Policy-as-code with Checkov and generate SBOM
+5. yes (confirm before code changes)
+6. nothing yet (no other scope)
+
+**Context from prior request**:
+Instructor required SAST + DAST for the project. User had already added Trivy (fs + image + SARIF + per-stage re-scans). Asked about Snyk/SonarQube (advised against for small portfolio: extra accounts/cost/complexity; Trivy sufficient + free in GH). Wanted realistic Amazon/Google (shift-left, supply chain, policy-as-code, layered testing) + light JPM/Amex-style (explicit gates, audit artifacts, re-scans, SBOM for compliance traceability) without over-engineering or new paid services.
+
+**What was delivered (minimal, realistic, portfolio-strong)**:
+- **Kept + enhanced Trivy**: Already present in build-containers (fs scan in test, image table + SARIF). Per-stage re-scan sections in deploy-dev/staging/prod remain (showcases "promote only clean or knowingly accept risk"). SARIF uploads to GitHub Security tab for history/audit trail.
+- **Added Policy-as-Code (Checkov)**: Integrated directly into the `build-containers` job (right after Trivy image scan, before push). Scans the `terraform/` dir using `bridgecrewio/checkov-action`. `soft_fail: true` for demo (shows findings, doesn't break the nice green demo run). Real mode comment: soft_fail=false + fail on HIGH. Step summary + explanation tying to Amazon "Policy as Code" practice (prevent misconfigs like open SGs, unencrypted resources, public buckets at plan/apply time in CI).
+- **Added SBOM generation**: After image push in build-containers, `trivy image --format cyclonedx --output sbom-backend.cdx.json ...` + upload-artifact (retention 30d, named with sha). Step summary explaining post-Log4j supply chain transparency requirement in finance/tech orgs. Artifact allows later promotion jobs or external tools to consume exact bill-of-materials for the promoted digest.
+- **Added DAST (OWASP ZAP)**: New `dast-dev` job (leaf on the graph, after deploy-dev, only on development branch). Uses official `zaproxy/action-baseline@v0.12.0` against the live ALB DNS (http:// because the ALB listener is plain HTTP:80; path rules send /api to Fargate). `fail_action: false` + `-I` for demo cleanliness. 
+  - Robust output handling + locate step (finds report_html.html etc).
+  - Uploads "zap-baseline-report-dev" artifact (HTML report downloadable from the Actions run for evidence/portfolio).
+  - Rich step summary: explains layered model (SAST+IaC+SBOM+DAST), real-enterprise upgrades (fail on high, SARIF for DAST, schedule, authn scans), and why ZAP vs Nuclei.
+  - Note: ALB DNS step in deploy-dev now correctly outputs the value; dast if uses `needs...result == 'success'` (safer).
+- **Wiring & comments**: Updated job graph ascii, branch strategy line, top-level security practices block, and per-job sections with "Tech DevSecOps + light Finance compliance simulation" framing. No new long jobs or heavy services. Everything stays in the existing 6-stage flow.
+- **Fixes during impl**: Changed DAST target from hardcoded https:// to http:// (project ALB is HTTP per terraform/modules/alb/main.tf:80). Updated echoes/summaries. Added permissions + artifact + locate for robustness.
+- **Docs**: README already had the row marked "Done (dev)" + ✅ bullets (from earlier pass). This session added the detailed DEV_HISTORY entry + in-pipeline comments. No other files changed for scope control.
+
+**Industry mapping (explicit in code + summaries)**:
+- Amazon/Google: shift-left (everything before deploy), continuous security in pipeline, SBOM for supply chain, Policy-as-Code (Checkov mirrors their internal Terraform guardrails), DAST as part of post-deploy verification.
+- Light finance (JPM-like, Amex, etc.): explicit layered controls (4 different security activities), manual prod gate already existed (SOX/PCI style), per-stage re-scans + artifacts (auditability), SBOM (traceability requirement after major incidents), "gated promotion" story.
+- SAST/DAST instructor req: fully covered (Trivy SAST + ZAP DAST) + bonus IaC + SBOM.
+- Avoided over-engineering: no Snyk (needs account/key), no SonarQube (heavy for student project), no new long-lived ZAP/Nuclei server, no blocking on findings for the demo run (but comments show how to turn into hard gates).
+
+**Result for portfolio/presentation**:
+The pipeline now visibly demonstrates 4+ security "stations" in one clean Actions graph:
+- Build/Test time: Trivy (code + image) + Checkov (IaC)
+- Promotion time: SBOM attached
+- Post-deploy (dev): DAST live scan + report artifact
+- Every stage: re-scan of the *exact promoted digest* + manual gate at prod.
+This is strong evidence of "enterprise thinking" on a small project.
+
+**SCRUM-style note for user**:
+"Yesterday: added the industry DevSecOps layer (kept Trivy, added Checkov PoC + SBOM in build, OWASP ZAP DAST after dev deploy). Fixed http/https for ALB, wired artifacts + summaries + comments explaining Amazon/Google + finance practices. All per the 6-point confirmation. No scope creep.
+Today: run a dev push to see the new jobs (build shows Checkov+SBOM, deploy-dev triggers dast-dev with ZAP report artifact). Then full promotion test if time. Update screenshots for deck."
+
+**Status**: Complete per the confirmed request. Ready for pipeline run + demo. User handles git commit/push + any final screenshots.
+
+---
+
+**End of recorded sessions** (user will continue with live runs, promotion verification, and final presentation prep).
+
