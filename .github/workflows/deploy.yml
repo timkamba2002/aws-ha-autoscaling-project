@@ -97,15 +97,10 @@ name: CI/CD Pipeline - HA To-Do App (Presentation Demo)
 
 on:
   push:
-<<<<<<< HEAD
     branches:
       - development
       - staging
       - production
-=======
-    branches: 
-      - development     # You will push your changes here
->>>>>>> ecf0220225519ae454008a3335eaeb5fae7903af
 
 permissions:
   id-token: write
@@ -125,14 +120,9 @@ env:
   OIDC_ROLE: arn:aws:iam::866934333672:role/GitHubActionsDeployRole-HAProjectV2
 
 jobs:
-<<<<<<< HEAD
   # ===================== 1. BUILD =====================
   build:
     name: 1. Build
-=======
-  build-test-plan:
-    name: Build, Test & Terraform Plan
->>>>>>> ecf0220225519ae454008a3335eaeb5fae7903af
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -140,8 +130,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: 'npm'
+          cache-dependency-path: app/package-lock.json
 
-<<<<<<< HEAD
       - name: Build React Frontend
         working-directory: ./app
         env:
@@ -169,46 +160,10 @@ jobs:
   test:
     name: 2. Test
     needs: build
-=======
-      - name: Install Frontend Dependencies
-        working-directory: ./app
-        run: npm ci
-
-      - name: Build React App
-        working-directory: ./app
-        run: npm run build
-
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
-
-      - name: Terraform Init
-        run: terraform init
-        working-directory: ./terraform
-
-      - name: Terraform Validate
-        run: terraform validate
-        working-directory: ./terraform
-
-      - name: Terraform Plan
-        run: terraform plan -out=tfplan
-        working-directory: ./terraform
-
-      - name: Upload Build Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-build
-          path: app/build
-
-  # Auto Deploy to Development
-  deploy-development:
-    needs: build-test-plan
-    if: github.ref == 'refs/heads/development'
->>>>>>> ecf0220225519ae454008a3335eaeb5fae7903af
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-<<<<<<< HEAD
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -256,20 +211,11 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Configure AWS via OIDC
-=======
-      - name: Download Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: app-build
-
-      - name: Configure AWS Credentials (OIDC)
->>>>>>> ecf0220225519ae454008a3335eaeb5fae7903af
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ env.OIDC_ROLE }}
           aws-region: ${{ env.AWS_REGION }}
 
-<<<<<<< HEAD
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
@@ -385,34 +331,11 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Configure AWS via OIDC
-=======
-      - name: Terraform Apply - Development
-        run: terraform apply -auto-approve tfplan
-        working-directory: ./terraform
-
-  # Deploy to Production (with Manual Approval)
-  deploy-production:
-    needs: build-test-plan
-    if: github.ref == 'refs/heads/production'
-    runs-on: ubuntu-latest
-    environment: production
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Download Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: app-build
-
-      - name: Configure AWS Credentials (OIDC)
->>>>>>> ecf0220225519ae454008a3335eaeb5fae7903af
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ env.OIDC_ROLE }}
           aws-region: ${{ env.AWS_REGION }}
 
-<<<<<<< HEAD
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "~> 1.10"
@@ -1001,8 +924,3 @@ jobs:
           echo "- ZAP DAST (this job - active scan against the live ALB)" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Full ZAP HTML report is available as the 'zap-report' artifact. Console output is in the job logs." >> $GITHUB_STEP_SUMMARY
-=======
-      - name: Terraform Apply - Production
-        run: terraform apply -auto-approve tfplan
-        working-directory: ./terraform
->>>>>>> ecf0220225519ae454008a3335eaeb5fae7903af
