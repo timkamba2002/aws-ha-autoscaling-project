@@ -74,7 +74,7 @@ const pool = mysql.createPool({
   queueLimit: 0
 });
 
-async function timedQuery(operation, sql, params) {
+async function timedQuery(operation, sql, params = []) {
   const end = dbQueryDuration.startTimer({ operation });
   try {
     const result = await pool.query(sql, params);
@@ -109,12 +109,97 @@ app.use((req, res, next) => {
 });
 
 // ==================== HEALTH CHECKS ====================
-// Root route
 app.get('/', (req, res) => {
   res.json({ message: 'HA Project Backend is running ✅', version: '1.0' });
 });
 
-// Health check (used by ALB + ECS)
 app.get('/health', async (req, res) => {
   try {
-    await timedQuery('health',
+    await timedQuery('health', 'SELECT 1');
+    res.json({ 
+      status: 'healthy', 
+      service: 'ha-backend',
+      db: 'connected',
+      environment: process.env.NODE_ENV || 'production',
+      timestamp: new Date().toISOString()
+    });
+  } catch (e) {
+    logger.error('Health check failed', { error: e.message });
+    res.status(503).json({ status: 'unhealthy', db: 'disconnected' });
+  }
+});
+
+// Prometheus metrics endpoint
+app.get('/metrics', async (req, res) => {
+  res.set('Content-Type', register.contentType);
+  res.end(await register.metrics());
+});
+
+// ==================== TODO API ROUTES ====================
+app.get('/api/tasks', async (req, res) => {
+  const { userId } = req.query;
+  if (!userId) return res.status(400).json({ error: 'userId required' });
+
+  try {
+    const [rows] = await timedQuery('select_tasks',
+      'SELECT * FROM tasks WHERE user_id = ? ORDER BY created_at DESC',
+      [userId]
+    );
+    tasksFetchedTotal.inc();
+    res.json(rows);
+  } catch (e) {
+    logger.error('Failed to fetch tasks', { error: e.message });
+    res.status(500).json({ error: 'Failed to fetch tasks' });
+  }
+});
+
+app.post('/api/tasks', async (req, res) => {
+  const { userId, title, description, priority } = req.body;
+  if (!userId || !title) return res.status(400).json({ error: 'userId and title required' });
+
+  try {
+    const [result] = await timedQuery('insert_task',
+      'INSERT INTO tasks (user_id, task, description, priority) VALUES (?, ?, ?, ?)',
+      [userId, title, description || null, priority || 'Medium']
+    );
+    tasksCreatedTotal.inc();
+    res.status(201).json({ id: result.insertId, userId, task: title, status: 'pending' });
+  } catch (e) {
+    logger.error('Failed to create task', { error: e.message });
+    res.status(500).json({ error: 'Failed to create task' });
+  }
+});
+
+app.put('/api/tasks/:id', async (req, res) => {
+  const { id } = req.params;
+  const { userId, title, description, status, priority } = req.body;
+
+  try {
+    const fields = [];
+    const values = [];
+
+    if (title !== undefined) { fields.push('task = ?'); values.push(title); }
+    if (description !== undefined) { fields.push('description = ?'); values.push(description); }
+    if (status !== undefined) { fields.push('status = ?'); values.push(status); }
+    if (priority !== undefined) { fields.push('priority = ?'); values.push(priority); }
+
+    if (fields.length === 0) return res.status(400).json({ error: 'No fields to update' });
+
+    values.push(id, userId);
+
+    const [result] = await timedQuery('update_task',
+      `UPDATE tasks SET ${fields.join(', ')} WHERE id = ? AND user_id = ?`,
+      values
+    );
+
+    if (result.affectedRows === 0) return res.status(404).json({ error: 'Task not found' });
+    res.json({ success: true });
+  } catch (e) {
+    logger.error('Failed to update task', { error: e.message });
+    res.status(500).json({ error: 'Failed to update task' });
+  }
+});
+
+app.listen(PORT, '0.0.0.0', () => {
+  logger.info(`Backend running on port ${PORT}`);
+});
