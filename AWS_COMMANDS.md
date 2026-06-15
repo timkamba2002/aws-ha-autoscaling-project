@@ -142,6 +142,27 @@ terraform apply `
 
 - Always run AWS CLI commands from **PowerShell** when possible.
 - Use `$env:MSYS_NO_PATHCONV = "1"` only when you hit path mangling on commands containing `/` (mainly SSM).
+
+### Switching environments cleanly (the #1 cause of terrifying plans)
+```powershell
+cd terraform
+# ALWAYS re-init with the exact per-env key + -reconfigure when you change -var environment
+terraform init -backend-config="key=ha-project/staging/terraform.tfstate" -reconfigure
+
+terraform plan -var="environment=staging"
+# (repeat for production, or development)
+
+# After external deletes (console VPC cleanup etc.) or first time for a new env:
+# 1. Init the target env's backend
+# 2. terraform state list   # look for old [0] resources that no longer have count
+# 3. terraform state rm <every stale address>   # e.g. module.vpc.aws_vpc.main[0], aws_db_subnet_group.main[0], ...
+# 4. Seed any missing per-env SSMs that data sources will read:
+#    MSYS_NO_PATHCONV=1 aws ssm put-parameter --name "/ha-project/staging/db_host" --type String --value "myapp-rds....us-east-1.rds.amazonaws.com" --overwrite
+#    (same for db_user + db_password SecureString; copy values from the live dev ones)
+# 5. Now plan/apply should only touch env-specific things (SNS name, log group name, per-env SSMs, LT user_data) and use data sources for the live shared foundation.
+```
+
+This pattern (plus the `count = var.environment == "development" ? 1 : 0` + data sources in the vpc/security/alb/autoscaling modules) is what finally made `terraform plan -var="environment=staging"` produce **0 to add, 2 to change, 0 to destroy** with no live resource destruction.
 - After using the `MSYS_NO_PATHCONV` trick, clean it up with `Remove-Item Env:MSYS_NO_PATHCONV`.
 - Keep Windows Terminal open with both a PowerShell tab and a Git Bash tab for flexibility.
 
@@ -551,7 +572,42 @@ Push this change. Then do a tiny commit/push to `development` (e.g. edit a comme
 **Important for first run after this change:**
 - The workflow now auto-creates the labels "promotion" and "automated" (via `gh label create ... || true`) before calling `gh pr create --label ...`. This fixes the "could not add label: 'promotion' not found" error you saw.
 - If an old "Promote: Development → Staging" PR already exists from previous attempts, close it first (or merge it), then re-trigger the dev deploy so a fresh one gets created cleanly.
-- Watch the Actions run (the graph should now show the full linear chain thanks to `needs:` wiring), then go to the repo's Pull requests tab to see the auto-created "Promote: Development → Staging" PR. Merge it (no code review needed for demo) to fire the staging deploy.
+- Watch the Actions run (the graph should now show the full linear chain thanks to `needs:` wiring), then go to the repo's Pull requests tab to see the auto-created "Promote: Development → Staging" PR. 
+
+**What to do when you see the "Promote: Development → Staging" PR (this is the part you're asking about right now):**
+
+1. Go to https://github.com/timkamba2002/aws-ha-autoscaling-project/pulls (or click the "Pull requests" tab at the top of the repo).
+2. Find and open the PR titled **"Promote: Development → Staging"** (it will have the labels `promotion` and `automated`).
+3. (Optional but good for demo) Click the "Files changed" tab and briefly review the diff.
+4. If you want nicer instructions on this specific PR (the one created before the body text was improved), click the pencil ✏️ icon next to the PR description and replace the body with this (copy-paste):
+
+```
+## 🚀 Automated Promotion PR: Development → Staging
+
+This PR was automatically created by the CI/CD pipeline after a successful build, test, and deploy to the **Development** environment.
+
+### What to do:
+1. **Review the changes** (see the "Files changed" tab – this shows what is different between the `development` and `staging` branches).
+2. **Merge this PR** (use "Merge pull request", "Squash and merge", or "Rebase and merge").
+   - Merging this PR will update the `staging` branch.
+   - This will automatically trigger the GitHub Actions workflow to **Deploy to Staging**.
+3. After merging, go to the **Actions** tab and watch the new run for the `staging` branch.
+
+This manual merge step enforces the required approval gate before promoting to Staging.
+
+(Created by the deploy-dev job in `.github/workflows/deploy.yml`)
+```
+
+5. Scroll down and click the big green **"Merge pull request"** button (you can also use "Squash and merge" – either is fine for this project).
+6. Confirm the merge.
+7. Immediately go to the **Actions** tab. You should see a new workflow run starting because the merge caused a push to the `staging` branch.
+8. That run will execute Build → Test → Deploy to Staging (and will create the next "Promote: Staging → Production" PR at the end, which will have the improved body text).
+
+Merging the promotion PR is the "manual gate". It proves you (the human) explicitly approved moving the code/artifact from Development to Staging.
+
+After the staging deployment succeeds, you'll get another similar PR for Production (which will pause at the GitHub Environment approval gate).
+
+(The PR body text was improved in the latest commit so future promotion PRs will have even clearer numbered steps.)
 
 The jobs are now connected in the Actions UI as: build → test → deploy-dev → deploy-staging → production-approval → deploy-prod (using `needs: [prev]` + `if: always() && ref == '...' ` so skipped jobs on a given branch don't break the visual flow).
 
@@ -571,6 +627,45 @@ This is a *repository setting* restriction (not a missing permission in the YAML
 5. Scroll to bottom and click **Save**.
 
 After changing, push a new commit to `development` to re-run with a fresh token that has the updated permissions.
+
+**Post-demo: Terraform errors now fail the pipeline (no more "green for demo")**
+
+You mentioned you already had the demo and now want real errors visible instead of the jobs always continuing green with "Terraform had non-fatal issues (existing resources) - continuing for demo".
+
+Changes made:
+- Removed the `|| echo ... continuing` (and the set +e / log tail wrappers) from all three `terraform apply` steps (dev, staging, prod) in `.github/workflows/deploy.yml`.
+- Updated comments in the workflow header and job steps.
+- Now, if `terraform apply` exits non-zero, the step and job will fail (red) so you can see the actual error in the pipeline UI.
+
+**IAM role errors (UntagRole in dev, EntityAlreadyExists in staging) fixed in code**
+
+The root cause was the shared global role name `ha-project-ec2-frontend-role` + separate per-env TF state files + the deploy OIDC role lacking `iam:TagRole` / `iam:UntagRole`.
+
+Fixes in `terraform/modules/ec2/main.tf`:
+- The `aws_iam_role.ec2_role` (and the two `aws_iam_role_policy` + `aws_iam_instance_profile`) are now created only for `environment == "development"` using `count`.
+- Added `lifecycle { ignore_changes = [tags] }` (prevents any tag/untag API calls).
+- For staging/prod applies: the launch template references the static role/profile name by string (no attempt to create/manage the shared role in those states).
+- Updated the two policies to use static role name for the attachment (avoids cross-resource count indexing issues in non-dev plans).
+
+This means:
+- Dev apply manages the role (once).
+- Staging/prod applies no longer attempt "create role" or "update tags on role".
+- Other global resources (S3 bucket, ALB, etc.) will still cause visible TF errors in non-dev applies (as you wanted), because they are also not namespaced.
+
+If you want to eliminate *all* already-exists errors, the long-term fix is to namespace *everything* (e.g. `ha-project-${var.environment}-alb`, different S3 bucket per env, etc.) or use `data` sources + `count = 0` for shared resources in non-dev states. 
+
+We have now implemented the conditional creation (count + data sources for lookup) for the base shared resources (VPC, SGs, ALB, ASG, RDS subnet/sg/instance, S3 bucket) so that staging and prod TF applies only manage the env-specific parts (SSM params, monitoring alarms, SNS, and the launch template update for user-data with the correct frontend prefix/SSM paths). This should make the "already exists" errors for those resources go away in staging, while still allowing you to see real errors if any (per your post-demo request for visibility). The dev state owns the base infra.
+
+Re-apply the changes (commit/push the updated terraform/ + yml, promote via PR) and re-run a dev deploy to verify the IAM error is gone, and that other TF problems now fail the job visibly.
+
+**Quick note on the PR you currently have open:**
+
+The PR you just saw (the one with the short "Automated promotion PR..." body) was created *before* we improved the template. You can either:
+
+- Just merge it as-is (perfectly fine), **or**
+- Click the ✏️ edit icon on the PR description and paste the nice formatted version from the "What to do when you see the promotion PR" section above.
+
+Either way, merge it to trigger staging. The *next* promotion PR (to production) will automatically use the much clearer body text.
 
 After saving, re-trigger the workflow (push another tiny commit to `development`).
 

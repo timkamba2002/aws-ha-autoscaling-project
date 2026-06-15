@@ -1,10 +1,12 @@
-**/.terraform/
-.terraform/
-*.tfstate
-*.tfstate.backup
-.terraform.lock.hcl
-*.tfvars
-**/node_modules/
-.DS_Store
-*.exe
-global-bundle.pem
+# Local / test / session files - do not commit these
+PROMETHEUS_GRAFANA_TEST_COMMANDS.md
+scripts/debug-new-instance.ps1
+terraform/LOCAL_TEST_COMMANDS.md
+terraform/SESSION_CHECKPOINT.md
+ha-oidc-ec2-policy.json
+*.tmp
+*.log
+
+# Keep the useful guides
+!PROMETHEUS_GRAFANA_ACCESS_GUIDE.md
+

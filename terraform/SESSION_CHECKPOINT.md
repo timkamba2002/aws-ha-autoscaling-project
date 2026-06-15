@@ -44,3 +44,21 @@ when switching `-var="environment=..."`.
 
 ---
 *Session automatically persisted by Grok. This file + the .md export provide a portable snapshot.*
+
+---
+
+## Clarification on "save session" (added later)
+
+The user clarified that "save session" referred to **saving the Grok AI conversation** (so they can resume this exact long context later), **not** anything GitHub/git related.
+
+A dedicated resume file was created at the project root:
+`RESUME_THIS_GROK_SESSION.txt`
+
+It contains the exact commands:
+- `grok --resume 0ea0d4db-0469-4fb2-8e45-b499f090a451`
+- Or inside TUI: `/load 0ea0d4db-0469-4fb2-8e45-b499f090a451`
+
+The git commit/push discussion was separate (the user happened to paste git status while asking about pushing the policy fix).
+
+The Grok session state is automatically saved by the system (see ~/.grok/sessions/...). We also did an explicit full export + this checkpoint + resume instructions as a belt-and-suspenders measure.
+
